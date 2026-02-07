@@ -1,0 +1,89 @@
+name: Loading States
+description: >
+  Content that depends on async data fetching should show loading
+  indicators to communicate system status to users.
+
+rules:
+  - id: data-loading-skeleton
+    name: No loading state for data-dependent content
+    severity: warning
+    description: >
+      This screen displays data that likely comes from an API but has
+      no visible loading skeleton or spinner for the initial load.
+    triggers:
+      pattern_types:
+        - list
+        - data-display
+      component_names:
+        - Table
+        - Card
+        - Avatar
+      layer_name_patterns:
+        - "(?i)(feed|timeline|profile|dashboard|data)"
+    expects:
+      in_screen:
+        - component_names: ["Skeleton"]
+        - layer_name_patterns: ["(?i)(loading|skeleton|shimmer|placeholder|spinner)"]
+      in_flow:
+        - component_names: ["Skeleton", "Spinner", "Progress"]
+        - layer_name_patterns: ["(?i)(loading|skeleton)"]
+    recommendation:
+      message: >
+        Add a loading skeleton that mimics the layout of the actual content.
+        This provides a better perceived performance than a generic spinner.
+      components:
+        - shadcn_id: skeleton
+          label: "Content Skeleton"
+        - shadcn_id: progress
+          label: "Progress Indicator"
+
+  - id: button-loading
+    name: No loading state for async button action
+    severity: warning
+    description: >
+      Buttons that trigger async operations (submit, save, send) should
+      show a loading state to prevent double-clicks and communicate progress.
+    triggers:
+      layer_name_patterns:
+        - "(?i)(submit|save|send|create|update|upload|import|export|sync)"
+      pattern_types:
+        - button
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(loading|spinner|progress|saving|sending)"]
+        - component_names: ["Button"]
+          with_properties:
+            State: "Loading"
+      in_flow:
+        - layer_name_patterns: ["(?i)(loading|progress|pending)"]
+    recommendation:
+      message: >
+        Add a loading variant for this button — show a spinner inside the
+        button and disable it during the async operation.
+      components:
+        - shadcn_id: button
+          variant: loading
+          label: "Button (Loading State)"
+
+  - id: page-loading
+    name: No initial page loading state
+    severity: info
+    description: >
+      Pages that fetch data on mount should show an initial loading state
+      before content is available.
+    triggers:
+      layer_name_patterns:
+        - "(?i)(page|screen|view|detail|profile)"
+    expects:
+      in_screen:
+        - component_names: ["Skeleton", "Spinner"]
+        - layer_name_patterns: ["(?i)(loading|skeleton)"]
+      in_flow:
+        - layer_name_patterns: ["(?i)(loading|skeleton|splash)"]
+    recommendation:
+      message: >
+        Consider adding an initial loading state for this page with
+        skeleton placeholders matching the content layout.
+      components:
+        - shadcn_id: skeleton
+          label: "Page Skeleton"

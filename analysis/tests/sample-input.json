@@ -1,0 +1,186 @@
+{
+  "analysis_id": "test-001",
+  "timestamp": "2026-02-07T12:00:00Z",
+  "file_name": "Test Design File",
+  "screens": [
+    {
+      "screen_id": "1:100",
+      "name": "Login Screen",
+      "order": 0,
+      "width": 390,
+      "height": 844,
+      "x": 0,
+      "y": 0,
+      "node_tree": {
+        "id": "1:100",
+        "name": "Login Screen",
+        "type": "FRAME",
+        "visible": true,
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844,
+        "children": [
+          {
+            "id": "1:101",
+            "name": "Email Input",
+            "type": "INSTANCE",
+            "componentName": "Input",
+            "componentProperties": {
+              "State": { "value": "Default" },
+              "Label": { "value": "Email" }
+            },
+            "visible": true,
+            "x": 24,
+            "y": 300,
+            "width": 342,
+            "height": 48,
+            "children": []
+          },
+          {
+            "id": "1:102",
+            "name": "Password Input",
+            "type": "INSTANCE",
+            "componentName": "Input",
+            "componentProperties": {
+              "State": { "value": "Default" },
+              "Label": { "value": "Password" }
+            },
+            "visible": true,
+            "x": 24,
+            "y": 370,
+            "width": 342,
+            "height": 48,
+            "children": []
+          },
+          {
+            "id": "1:103",
+            "name": "Sign In Button",
+            "type": "INSTANCE",
+            "componentName": "Button",
+            "componentProperties": {
+              "Variant": { "value": "Primary" },
+              "Label": { "value": "Sign In" }
+            },
+            "visible": true,
+            "x": 24,
+            "y": 450,
+            "width": 342,
+            "height": 48,
+            "children": [
+              {
+                "id": "1:104",
+                "name": "Sign In",
+                "type": "TEXT",
+                "textContent": "Sign In",
+                "visible": true,
+                "x": 150,
+                "y": 462,
+                "width": 90,
+                "height": 24,
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "screen_id": "2:100",
+      "name": "Dashboard",
+      "order": 1,
+      "width": 390,
+      "height": 844,
+      "x": 500,
+      "y": 0,
+      "node_tree": {
+        "id": "2:100",
+        "name": "Dashboard",
+        "type": "FRAME",
+        "visible": true,
+        "x": 500,
+        "y": 0,
+        "width": 390,
+        "height": 844,
+        "children": [
+          {
+            "id": "2:101",
+            "name": "Activity Feed",
+            "type": "FRAME",
+            "visible": true,
+            "x": 0,
+            "y": 200,
+            "width": 390,
+            "height": 500,
+            "children": [
+              {
+                "id": "2:102",
+                "name": "Activity Card",
+                "type": "INSTANCE",
+                "componentName": "Card",
+                "visible": true,
+                "x": 16,
+                "y": 0,
+                "width": 358,
+                "height": 80,
+                "children": []
+              },
+              {
+                "id": "2:103",
+                "name": "Activity Card",
+                "type": "INSTANCE",
+                "componentName": "Card",
+                "visible": true,
+                "x": 16,
+                "y": 96,
+                "width": 358,
+                "height": 80,
+                "children": []
+              },
+              {
+                "id": "2:104",
+                "name": "Activity Card",
+                "type": "INSTANCE",
+                "componentName": "Card",
+                "visible": true,
+                "x": 16,
+                "y": 192,
+                "width": 358,
+                "height": 80,
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "2:105",
+            "name": "Delete Account",
+            "type": "INSTANCE",
+            "componentName": "Button",
+            "componentProperties": {
+              "Variant": { "value": "Destructive" }
+            },
+            "visible": true,
+            "x": 24,
+            "y": 780,
+            "width": 342,
+            "height": 40,
+            "children": [
+              {
+                "id": "2:106",
+                "name": "Delete Account",
+                "type": "TEXT",
+                "textContent": "Delete Account",
+                "visible": true,
+                "x": 120,
+                "y": 790,
+                "width": 150,
+                "height": 20,
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

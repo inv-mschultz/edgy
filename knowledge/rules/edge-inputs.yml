@@ -1,0 +1,48 @@
+name: Edge Inputs
+description: >
+  Form inputs should handle edge cases like extreme lengths,
+  special characters, and unusual formatting gracefully.
+
+rules:
+  - id: no-character-limit
+    name: Text input has no visible character limit
+    severity: info
+    description: >
+      Long-form text inputs (textareas, name fields, bio fields) should
+      show a character counter or limit to prevent truncation surprises.
+    triggers:
+      component_names:
+        - Textarea
+        - Input
+      layer_name_patterns:
+        - "(?i)(bio|description|comment|message|note|textarea|long.?text)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(counter|count|limit|max|character|remaining)"]
+    recommendation:
+      message: >
+        Add a character counter or limit indicator so users know the
+        maximum allowed length before hitting unexpected truncation.
+      components:
+        - shadcn_id: form-message
+          label: "Character Counter"
+
+  - id: text-overflow
+    name: Long text content may overflow
+    severity: info
+    description: >
+      Displayed text content (names, titles, descriptions) should handle
+      very long values gracefully — with truncation, wrapping, or tooltips.
+    triggers:
+      layer_name_patterns:
+        - "(?i)(name|title|label|heading|username|email|url|description)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(truncat|ellipsis|overflow|wrap|tooltip)"]
+    recommendation:
+      message: >
+        Consider how this text behaves with very long content. Add text
+        truncation with a tooltip showing the full value on hover.
+      components:
+        - shadcn_id: tooltip
+          label: "Overflow Tooltip"

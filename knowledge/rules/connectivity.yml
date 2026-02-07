@@ -1,0 +1,60 @@
+name: Connectivity
+description: >
+  Screens that depend on network connectivity should handle
+  offline states, timeouts, and reconnection gracefully.
+
+rules:
+  - id: no-offline-indicator
+    name: No offline/connectivity indicator
+    severity: warning
+    description: >
+      Screens that fetch or submit data should communicate when the
+      device is offline or experiencing connectivity issues.
+    triggers:
+      pattern_types:
+        - form
+        - data-display
+        - list
+      layer_name_patterns:
+        - "(?i)(api|fetch|load|sync|upload|download)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(offline|no.?connection|network|retry|reconnect)"]
+      in_flow:
+        - layer_name_patterns: ["(?i)(offline|no.?connection|network.?error)"]
+    recommendation:
+      message: >
+        Add a connectivity error state — a banner or overlay that appears
+        when the network is unavailable, with a retry option.
+      components:
+        - shadcn_id: alert
+          variant: destructive
+          label: "Connectivity Alert"
+        - shadcn_id: button
+          label: "Retry Button"
+
+  - id: timeout-state
+    name: No timeout/slow connection handling
+    severity: info
+    description: >
+      Long-running operations should handle timeout scenarios — show a
+      message if the request is taking longer than expected.
+    triggers:
+      layer_name_patterns:
+        - "(?i)(upload|import|export|generate|process|sync)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(timeout|slow|taking.?long|retry|cancel)"]
+      in_flow:
+        - layer_name_patterns: ["(?i)(timeout|failed|retry)"]
+    recommendation:
+      message: >
+        Add timeout handling — show a message when the operation is taking
+        longer than expected with options to retry or cancel.
+      components:
+        - shadcn_id: alert
+          label: "Timeout Alert"
+        - shadcn_id: button
+          label: "Cancel/Retry Button"
+        - shadcn_id: progress
+          label: "Progress Indicator"

@@ -1,0 +1,98 @@
+name: Error States
+description: >
+  Interactive elements should have corresponding error and validation states
+  so users understand what went wrong and how to fix it.
+
+rules:
+  - id: form-field-errors
+    name: Form fields missing error states
+    severity: critical
+    description: >
+      Text inputs, selects, and other form fields should show an error
+      variant when validation fails, with a helpful message below.
+    triggers:
+      component_names:
+        - Input
+        - Textarea
+        - Select
+        - Combobox
+        - DatePicker
+        - RadioGroup
+        - Checkbox
+      layer_name_patterns:
+        - "(?i)(input|field|form|text.?area|select|dropdown)"
+    expects:
+      in_screen:
+        - component_names: ["Input"]
+          with_properties:
+            State: "Error"
+        - layer_name_patterns: ["(?i)(error|invalid|validation|destructive)"]
+        - component_names: ["FormMessage", "Form Message"]
+      in_flow:
+        - layer_name_patterns: ["(?i)error.?state", "(?i)validation.?error"]
+    recommendation:
+      message: >
+        Add error variants for form fields with descriptive validation
+        messages. Users need to know what went wrong and how to fix it.
+      components:
+        - shadcn_id: input
+          variant: error
+          label: "Input (Error State)"
+        - shadcn_id: form-message
+          variant: destructive
+          label: "Form Validation Message"
+
+  - id: submit-error-feedback
+    name: No error handling for form submission
+    severity: critical
+    description: >
+      Forms with submit actions should handle submission failures
+      (server errors, network issues, validation errors).
+    triggers:
+      layer_name_patterns:
+        - "(?i)(submit|save|send|create|update|confirm|sign.?in|log.?in|register)"
+      pattern_types:
+        - button
+    expects:
+      in_screen:
+        - component_names: ["Alert", "Toast", "Sonner"]
+        - layer_name_patterns: ["(?i)(error|fail|alert|toast|notification)"]
+      in_flow:
+        - layer_name_patterns: ["(?i)(error|fail|something.?went.?wrong)"]
+    recommendation:
+      message: >
+        Add error feedback for form submission — show an inline alert or
+        toast notification explaining what went wrong and how to recover.
+      components:
+        - shadcn_id: alert
+          variant: destructive
+          label: "Error Alert"
+        - shadcn_id: toast
+          variant: destructive
+          label: "Error Toast Notification"
+
+  - id: search-no-results
+    name: Search has no "no results" state
+    severity: warning
+    description: >
+      Search or filter functionality should show a clear state when no
+      results match the query, guiding users on what to do next.
+    triggers:
+      pattern_types:
+        - search
+      layer_name_patterns:
+        - "(?i)(search|filter|query)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(no.?results|not.?found|empty|zero)"]
+      in_flow:
+        - layer_name_patterns: ["(?i)(no.?results|not.?found)"]
+    recommendation:
+      message: >
+        Add a "no results" state for search/filter — show a helpful message
+        with suggestions to broaden the search criteria.
+      components:
+        - shadcn_id: card
+          label: "No Results Card"
+        - shadcn_id: button
+          label: "Clear Filters Button"

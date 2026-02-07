@@ -1,0 +1,50 @@
+name: Cleanup Old Analyses
+
+on:
+  schedule:
+    # Run daily at 3 AM UTC
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Remove analyses older than 24 hours
+        run: |
+          deleted=0
+          for dir in analyses/*/; do
+            [ ! -d "$dir" ] && continue
+            [ "$dir" = "analyses/*/" ] && continue
+
+            input_file="$dir/input.json"
+            [ ! -f "$input_file" ] && continue
+
+            # Get file age from git
+            file_date=$(git log -1 --format="%ct" -- "$input_file" 2>/dev/null || echo "0")
+            now=$(date +%s)
+            age_hours=$(( (now - file_date) / 3600 ))
+
+            if [ "$age_hours" -gt 24 ]; then
+              echo "Removing $dir (${age_hours}h old)"
+              rm -rf "$dir"
+              deleted=$((deleted + 1))
+            fi
+          done
+
+          echo "Cleaned up $deleted analysis folder(s)"
+
+      - name: Commit cleanup
+        run: |
+          git config user.name "Edgy Bot"
+          git config user.email "edgy-bot@users.noreply.github.com"
+          git add -A analyses/
+          git diff --cached --quiet && echo "Nothing to clean up" && exit 0
+          git commit -m "[edgy] Cleanup old analyses"
+          git push

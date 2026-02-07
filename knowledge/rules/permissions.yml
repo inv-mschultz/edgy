@@ -1,0 +1,35 @@
+name: Permissions
+description: >
+  Actions and content that require specific permissions or roles
+  should handle unauthorized access gracefully.
+
+rules:
+  - id: gated-action-no-disabled
+    name: Restricted action has no disabled/unauthorized state
+    severity: warning
+    description: >
+      Actions that require specific permissions (admin, owner, editor)
+      should show a disabled state with explanation for unauthorized users.
+    triggers:
+      layer_name_patterns:
+        - "(?i)(admin|manage|settings|edit|configure|delete|invite|approve)"
+      pattern_types:
+        - button
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(disabled|unauthorized|forbidden|no.?permission|locked|restricted)"]
+        - component_names: ["Tooltip"]
+      in_flow:
+        - layer_name_patterns: ["(?i)(permission|access.?denied|role|unauthorized)"]
+    recommendation:
+      message: >
+        Add a disabled state for this action when the user lacks permission.
+        Include a tooltip explaining what role/permission is needed.
+      components:
+        - shadcn_id: button
+          variant: disabled
+          label: "Disabled Button"
+        - shadcn_id: tooltip
+          label: "Permission Tooltip"
+        - shadcn_id: alert
+          label: "Access Denied Alert"

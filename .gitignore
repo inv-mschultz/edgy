@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build output
+plugin/dist/
+analysis/dist/
+
+# Environment
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Analysis data (keep .gitkeep, ignore local test data)
+# Note: analyses/ is committed via GitHub API, not locally

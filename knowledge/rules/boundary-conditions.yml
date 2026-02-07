@@ -1,0 +1,50 @@
+name: Boundary Conditions
+description: >
+  Numeric values, counters, and data displays should handle
+  minimum, maximum, zero, and overflow states.
+
+rules:
+  - id: counter-boundaries
+    name: Counter/badge has no boundary handling
+    severity: info
+    description: >
+      Numeric displays like notification badges, counters, or pagination
+      should handle zero, very large numbers (99+), and negative values.
+    triggers:
+      component_names:
+        - Badge
+      layer_name_patterns:
+        - "(?i)(count|badge|notification|unread|total|quantity|amount)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(zero|empty|overflow|99\\+|max|limit)"]
+    recommendation:
+      message: >
+        Show how this counter behaves at its boundaries: zero items,
+        maximum display value (e.g., 99+), and potentially negative numbers.
+      components:
+        - shadcn_id: badge
+          label: "Overflow Badge (99+)"
+
+  - id: pagination-boundaries
+    name: Pagination has no first/last page state
+    severity: warning
+    description: >
+      Pagination controls should handle the first page (no previous button)
+      and last page (no next button) states.
+    triggers:
+      layer_name_patterns:
+        - "(?i)(pagination|paging|page.?\\d|prev|next)"
+      component_names:
+        - Pagination
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(disabled|first|last|no.?more)"]
+    recommendation:
+      message: >
+        Show pagination at its boundaries — first page with disabled
+        "previous" and last page with disabled "next".
+      components:
+        - shadcn_id: button
+          variant: disabled
+          label: "Disabled Pagination Button"

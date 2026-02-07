@@ -1,0 +1,15 @@
+{
+  "name": "Edgy — Edge Case Analyzer",
+  "id": "edgy-edge-case-analyzer",
+  "api": "1.0.0",
+  "main": "dist/plugin.js",
+  "ui": "dist/ui.html",
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": [
+      "api.github.com",
+      "raw.githubusercontent.com"
+    ]
+  },
+  "editorType": ["figma"]
+}

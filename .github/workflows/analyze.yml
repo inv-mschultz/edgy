@@ -1,0 +1,74 @@
+name: Edgy Analysis
+
+on:
+  push:
+    paths:
+      - "analyses/*/input.json"
+    branches:
+      - main
+
+# Allow concurrent runs — each analysis is isolated by UUID folder
+concurrency:
+  group: edgy-${{ github.sha }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install analysis dependencies
+        working-directory: analysis
+        run: npm ci
+
+      - name: Find new analysis inputs
+        id: find-inputs
+        run: |
+          # Find input.json files that were added in this commit
+          INPUTS=$(git diff --name-only HEAD~1 HEAD -- 'analyses/*/input.json' 2>/dev/null || echo "")
+          if [ -z "$INPUTS" ]; then
+            # Fallback: find any input.json without a corresponding output.json
+            INPUTS=$(find analyses -name "input.json" -exec sh -c '
+              dir=$(dirname "$1")
+              if [ ! -f "$dir/output.json" ]; then
+                echo "$1"
+              fi
+            ' _ {} \;)
+          fi
+          echo "inputs<<EOF" >> $GITHUB_OUTPUT
+          echo "$INPUTS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Run analysis for each input
+        run: |
+          echo "${{ steps.find-inputs.outputs.inputs }}" | while IFS= read -r input_file; do
+            [ -z "$input_file" ] && continue
+            echo "🔍 Analyzing: $input_file"
+            dir=$(dirname "$input_file")
+            output_file="$dir/output.json"
+
+            npx tsx analysis/src/index.ts "$input_file" "$output_file"
+
+            echo "✅ Results written to: $output_file"
+          done
+
+      - name: Commit and push results
+        run: |
+          git config user.name "Edgy Bot"
+          git config user.email "edgy-bot@users.noreply.github.com"
+          git add analyses/*/output.json
+          git diff --cached --quiet && echo "No new results to commit" && exit 0
+          git commit -m "[edgy] Analysis results $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push

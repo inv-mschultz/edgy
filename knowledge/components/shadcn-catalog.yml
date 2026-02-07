@@ -1,0 +1,135 @@
+components:
+  - id: input
+    name: Input
+    description: Text input field for forms
+    variants:
+      - { name: Default, properties: { State: "Default" } }
+      - { name: Focus, properties: { State: "Focus" } }
+      - { name: Error, properties: { State: "Error" } }
+      - { name: Disabled, properties: { State: "Disabled" } }
+    edge_case_roles: [error-states, edge-inputs]
+
+  - id: textarea
+    name: Textarea
+    description: Multi-line text input
+    variants:
+      - { name: Default, properties: {} }
+      - { name: Error, properties: { State: "Error" } }
+      - { name: Disabled, properties: { State: "Disabled" } }
+    edge_case_roles: [error-states, edge-inputs]
+
+  - id: select
+    name: Select
+    description: Dropdown selection control
+    variants:
+      - { name: Default, properties: {} }
+      - { name: Error, properties: { State: "Error" } }
+      - { name: Disabled, properties: { State: "Disabled" } }
+    edge_case_roles: [error-states]
+
+  - id: button
+    name: Button
+    description: Clickable action trigger
+    variants:
+      - { name: Default, properties: { Variant: "default" } }
+      - { name: Destructive, properties: { Variant: "destructive" } }
+      - { name: Outline, properties: { Variant: "outline" } }
+      - { name: Ghost, properties: { Variant: "ghost" } }
+      - { name: Loading, properties: { State: "Loading" } }
+      - { name: Disabled, properties: { State: "Disabled" } }
+    edge_case_roles: [loading-states, destructive-actions, permissions]
+
+  - id: alert
+    name: Alert
+    description: Callout for important messages
+    variants:
+      - { name: Default, properties: { Variant: "default" } }
+      - { name: Destructive, properties: { Variant: "destructive" } }
+    edge_case_roles: [error-states, permissions, connectivity]
+
+  - id: alert-dialog
+    name: Alert Dialog
+    description: Modal confirmation dialog for critical actions
+    variants:
+      - { name: Default, properties: {} }
+    edge_case_roles: [destructive-actions]
+
+  - id: toast
+    name: Toast / Sonner
+    description: Transient notification message
+    variants:
+      - { name: Default, properties: {} }
+      - { name: Success, properties: { Variant: "success" } }
+      - { name: Error, properties: { Variant: "error" } }
+    edge_case_roles: [error-states, destructive-actions, connectivity]
+
+  - id: skeleton
+    name: Skeleton
+    description: Placeholder loading animation
+    variants:
+      - { name: Text, properties: { Type: "Text" } }
+      - { name: Card, properties: { Type: "Card" } }
+      - { name: Avatar, properties: { Type: "Avatar" } }
+      - { name: Image, properties: { Type: "Image" } }
+    edge_case_roles: [loading-states]
+
+  - id: progress
+    name: Progress
+    description: Progress indicator bar
+    variants:
+      - { name: Determinate, properties: {} }
+      - { name: Indeterminate, properties: {} }
+    edge_case_roles: [loading-states]
+
+  - id: form-message
+    name: Form Message
+    description: Validation or helper message for form fields
+    variants:
+      - { name: Helper, properties: { Variant: "default" } }
+      - { name: Error, properties: { Variant: "destructive" } }
+    edge_case_roles: [error-states, edge-inputs]
+
+  - id: card
+    name: Card
+    description: Container for grouped content
+    variants:
+      - { name: Default, properties: {} }
+    edge_case_roles: [empty-states]
+
+  - id: badge
+    name: Badge
+    description: Small label for status or counts
+    variants:
+      - { name: Default, properties: {} }
+      - { name: Destructive, properties: { Variant: "destructive" } }
+      - { name: Outline, properties: { Variant: "outline" } }
+    edge_case_roles: [boundary-conditions]
+
+  - id: tooltip
+    name: Tooltip
+    description: Contextual information on hover
+    variants:
+      - { name: Default, properties: {} }
+    edge_case_roles: [permissions, boundary-conditions, edge-inputs]
+
+  - id: dialog
+    name: Dialog
+    description: Modal dialog for focused interactions
+    variants:
+      - { name: Default, properties: {} }
+    edge_case_roles: [destructive-actions]
+
+  - id: separator
+    name: Separator
+    description: Visual divider between content sections
+    variants:
+      - { name: Horizontal, properties: {} }
+      - { name: Vertical, properties: {} }
+    edge_case_roles: [empty-states]
+
+  - id: table
+    name: Table
+    description: Data table for structured information
+    variants:
+      - { name: Default, properties: {} }
+    edge_case_roles: [empty-states, loading-states]
