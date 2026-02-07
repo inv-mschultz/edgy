@@ -7,6 +7,7 @@ import {
   clearAllFindings,
   clearAllCanvasDocumentation,
   findFrameById,
+  repositionAllBadges,
   type StoredFindingsData,
 } from "./health-indicator";
 import type {
@@ -121,6 +122,9 @@ figma.ui.onmessage = async (msg: UIMessage) => {
 
         // Generate findings report frame
         await generateFindingsReport(results, frames);
+
+        // Reposition any existing badges to ensure correct placement
+        repositionAllBadges();
 
         const doneMsg: PluginMessage = { type: "render-complete" };
         figma.ui.postMessage(doneMsg);

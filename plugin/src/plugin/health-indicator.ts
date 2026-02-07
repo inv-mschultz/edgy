@@ -129,17 +129,21 @@ export async function renderHealthIndicator(
   text.fills = [{ type: "SOLID", color: COLORS.foreground }];
   badge.appendChild(text);
 
-  // Add to page first
+  // Add to page first, then position
   figma.currentPage.appendChild(badge);
 
-  // Estimate badge dimensions (auto-layout dimensions may not be ready)
-  // dot(6) + spacing(6) + text(~6px per char) + paddingLeft(8) + paddingRight(10)
-  const estimatedWidth = 8 + 6 + 6 + (labelText.length * 5.5) + 10;
-  const estimatedHeight = 6 + 12 + 6; // padding + content
+  // Store frame ID for repositioning later
+  badge.setPluginData("frame-id", frame.id);
 
-  // Position: top-right of frame (0px right, 20px above)
-  badge.x = frame.x + frame.width - estimatedWidth;
-  badge.y = frame.y - estimatedHeight - 20;
+  // Position badge at top-right of frame (0px right, 20px above)
+  // Use actual badge dimensions after auto-layout computes them
+  // Badge width = paddingLeft(8) + dot(6) + spacing(6) + text + paddingRight(10)
+  const textWidth = labelText.length * 6.5; // Approximate character width
+  const badgeWidth = 8 + 6 + 6 + textWidth + 10;
+  const badgeHeight = 6 + 14 + 6; // padding + content height
+
+  badge.x = frame.x + frame.width - badgeWidth;
+  badge.y = frame.y - badgeHeight - 16;
 
   // Lock the badge to prevent accidental edits
   badge.locked = true;
@@ -246,9 +250,35 @@ export async function generateFindingsReport(
   for (const screenResult of results.screens) {
     if (screenResult.findings.length === 0) continue;
 
-    const screenSection = createScreenSection(screenResult);
-    report.appendChild(screenSection);
-    screenSection.layoutAlign = "STRETCH"; // Set AFTER adding to parent
+    // Create section container
+    const section = figma.createFrame();
+    section.name = `screen-${screenResult.screen_id}`;
+    section.layoutMode = "VERTICAL";
+    section.primaryAxisSizingMode = "AUTO";
+    section.itemSpacing = 12;
+    section.fills = [];
+
+    // Add section to report and set stretch BEFORE adding children
+    report.appendChild(section);
+    section.layoutAlign = "STRETCH";
+
+    // Screen title
+    const screenTitle = figma.createText();
+    screenTitle.fontName = { family: "Inter", style: "Semi Bold" };
+    screenTitle.fontSize = 14;
+    screenTitle.lineHeight = { value: 20, unit: "PIXELS" };
+    screenTitle.characters = screenResult.name;
+    screenTitle.fills = [{ type: "SOLID", color: COLORS.foreground }];
+    section.appendChild(screenTitle);
+
+    // Add findings AFTER section is stretched
+    for (const finding of screenResult.findings) {
+      const item = createFindingItem(finding);
+      section.appendChild(item);
+      // Use newer sizing properties: FILL width, HUG height
+      item.layoutSizingHorizontal = "FILL";
+      item.layoutSizingVertical = "HUG";
+    }
   }
 
   // Flow findings
@@ -260,6 +290,10 @@ export async function generateFindingsReport(
     flowSection.itemSpacing = 12;
     flowSection.fills = [];
 
+    // Add section to report and set stretch BEFORE adding children
+    report.appendChild(flowSection);
+    flowSection.layoutAlign = "STRETCH";
+
     const flowTitle = figma.createText();
     flowTitle.fontName = { family: "Inter", style: "Semi Bold" };
     flowTitle.fontSize = 11;
@@ -267,14 +301,14 @@ export async function generateFindingsReport(
     flowTitle.fills = [{ type: "SOLID", color: COLORS.mutedForeground }];
     flowSection.appendChild(flowTitle);
 
+    // Add findings AFTER section is stretched
     for (const finding of results.flow_findings) {
       const item = createFindingItem(finding);
       flowSection.appendChild(item);
-      item.layoutAlign = "STRETCH"; // Set AFTER adding to parent
+      // Use newer sizing properties: FILL width, HUG height
+      item.layoutSizingHorizontal = "FILL";
+      item.layoutSizingVertical = "HUG";
     }
-
-    report.appendChild(flowSection);
-    flowSection.layoutAlign = "STRETCH"; // Set AFTER adding to parent
   }
 
   // Add to page
@@ -358,6 +392,42 @@ export function findFrameById(frameId: string): FrameNode | null {
   return node?.type === "FRAME" ? node : null;
 }
 
+/**
+ * Repositions all health indicator badges to match their frame positions.
+ * Call this when frames are moved.
+ */
+export function repositionAllBadges(): void {
+  const badges = figma.currentPage.findAll(
+    (n) => n.type === "FRAME" && n.name.startsWith(BADGE_PREFIX)
+  ) as FrameNode[];
+
+  for (const badge of badges) {
+    const frameId = badge.getPluginData("frame-id");
+    if (!frameId) continue;
+
+    const frame = findFrameById(frameId);
+    if (!frame) {
+      // Frame was deleted, remove the badge
+      badge.locked = false;
+      badge.remove();
+      continue;
+    }
+
+    // Get badge text to estimate width
+    const textNode = badge.findOne((n) => n.type === "TEXT" && n.name === "label") as TextNode;
+    const labelText = textNode?.characters || "";
+    const textWidth = labelText.length * 6.5;
+    const badgeWidth = 8 + 6 + 6 + textWidth + 10;
+    const badgeHeight = 6 + 14 + 6;
+
+    // Unlock, reposition, lock
+    badge.locked = false;
+    badge.x = frame.x + frame.width - badgeWidth;
+    badge.y = frame.y - badgeHeight - 16;
+    badge.locked = true;
+  }
+}
+
 // --- Helpers ---
 
 function getWorstSeverity(
@@ -416,31 +486,6 @@ function createStatBadge(
   return badge;
 }
 
-function createScreenSection(screenResult: ScreenResult): FrameNode {
-  const section = figma.createFrame();
-  section.name = `screen-${screenResult.screen_id}`;
-  section.layoutMode = "VERTICAL";
-  section.primaryAxisSizingMode = "AUTO";
-  section.itemSpacing = 12;
-  section.fills = [];
-
-  const screenTitle = figma.createText();
-  screenTitle.fontName = { family: "Inter", style: "Semi Bold" };
-  screenTitle.fontSize = 14;
-  screenTitle.lineHeight = { value: 20, unit: "PIXELS" };
-  screenTitle.characters = screenResult.name;
-  screenTitle.fills = [{ type: "SOLID", color: COLORS.foreground }];
-  section.appendChild(screenTitle);
-
-  for (const finding of screenResult.findings) {
-    const item = createFindingItem(finding);
-    section.appendChild(item);
-    item.layoutAlign = "STRETCH"; // Set AFTER adding to parent
-  }
-
-  return section;
-}
-
 function createFindingItem(finding: AnalysisFinding | { severity: string; title: string; description: string }): FrameNode {
   // Determine colors based on severity
   const iconColor = finding.severity === "critical" ? COLORS.critical
@@ -451,11 +496,9 @@ function createFindingItem(finding: AnalysisFinding | { severity: string; title:
     : COLORS.infoBg;
 
   // Main container - horizontal flex, align-items: flex-start
-  // layoutAlign = "STRETCH" will be set by parent after appendChild
   const item = figma.createFrame();
   item.name = "finding";
   item.layoutMode = "HORIZONTAL";
-  item.primaryAxisSizingMode = "AUTO";
   item.counterAxisAlignItems = "MIN"; // align-items: flex-start
   item.itemSpacing = 12;
   item.paddingLeft = 16;

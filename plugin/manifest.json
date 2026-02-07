@@ -1,5 +1,5 @@
 {
-  "name": "Edgy — Edge Case Analyzer",
+  "name": "Edgy",
   "id": "1601935800141713412",
   "api": "1.0.0",
   "main": "dist/plugin.js",
