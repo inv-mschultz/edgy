@@ -25,39 +25,41 @@ export function Results({ results, onExportToCanvas, onStartOver }: Props) {
         </p>
       </div>
 
-      {/* Stat cards */}
+      {/* Stat cards - using accessible colors */}
       <div className="grid grid-cols-3 gap-2">
-        <StatCard label="Critical" count={summary.critical} color="text-destructive bg-destructive/10" />
-        <StatCard label="Warning" count={summary.warning} color="text-yellow-600 bg-yellow-50" />
-        <StatCard label="Info" count={summary.info} color="text-blue-600 bg-blue-50" />
+        <StatCard label="Critical" count={summary.critical} color="text-red-700 bg-red-50" />
+        <StatCard label="Warning" count={summary.warning} color="text-amber-700 bg-amber-50" />
+        <StatCard label="Info" count={summary.info} color="text-blue-700 bg-blue-50" />
       </div>
 
-      {/* Per-screen findings */}
-      <div className="flex flex-col gap-2">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          By Screen
-        </div>
-        {results.screens.map((screen) => (
-          <div key={screen.screen_id} className="rounded-lg border p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">{screen.name}</span>
-              <span className="text-xs text-muted-foreground">
-                {screen.findings.length} finding{screen.findings.length !== 1 ? "s" : ""}
-              </span>
-            </div>
-            {screen.findings.length > 0 && (
-              <div className="mt-2 flex flex-col gap-1">
-                {screen.findings.map((finding) => (
-                  <div key={finding.id} className="flex items-start gap-2 text-xs">
-                    <SeverityDot severity={finding.severity} />
-                    <span>{finding.title}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+      {/* Per-screen findings - only show screens with findings */}
+      {results.screens.filter(s => s.findings.length > 0).length > 0 && (
+        <div className="flex flex-col gap-2">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            By Screen
           </div>
-        ))}
-      </div>
+          {results.screens
+            .filter((screen) => screen.findings.length > 0)
+            .map((screen) => (
+              <div key={screen.screen_id} className="rounded-lg border p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">{screen.name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {screen.findings.length} finding{screen.findings.length !== 1 ? "s" : ""}
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-col gap-1">
+                  {screen.findings.map((finding) => (
+                    <div key={finding.id} className="flex items-start gap-2 text-xs">
+                      <SeverityDot severity={finding.severity} />
+                      <span>{finding.title}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+        </div>
+      )}
 
       {/* Flow-level findings */}
       {results.flow_findings.length > 0 && (
@@ -134,9 +136,9 @@ function StatCard({ label, count, color }: { label: string; count: number; color
 
 function SeverityDot({ severity }: { severity: string }) {
   const colors: Record<string, string> = {
-    critical: "bg-destructive",
-    warning: "bg-yellow-500",
-    info: "bg-blue-500",
+    critical: "bg-red-600",
+    warning: "bg-amber-600",
+    info: "bg-blue-600",
   };
   return (
     <span className={`inline-block w-1.5 h-1.5 rounded-full mt-1 shrink-0 ${colors[severity] || colors.info}`} />

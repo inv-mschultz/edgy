@@ -248,6 +248,7 @@ export async function generateFindingsReport(
 
     const screenSection = createScreenSection(screenResult);
     report.appendChild(screenSection);
+    screenSection.layoutAlign = "STRETCH"; // Set AFTER adding to parent
   }
 
   // Flow findings
@@ -256,9 +257,7 @@ export async function generateFindingsReport(
     flowSection.name = "flow-findings";
     flowSection.layoutMode = "VERTICAL";
     flowSection.primaryAxisSizingMode = "AUTO";
-    flowSection.counterAxisSizingMode = "AUTO";
-    flowSection.layoutAlign = "STRETCH";
-    flowSection.itemSpacing = 8;
+    flowSection.itemSpacing = 12;
     flowSection.fills = [];
 
     const flowTitle = figma.createText();
@@ -269,10 +268,13 @@ export async function generateFindingsReport(
     flowSection.appendChild(flowTitle);
 
     for (const finding of results.flow_findings) {
-      flowSection.appendChild(createFindingItem(finding));
+      const item = createFindingItem(finding);
+      flowSection.appendChild(item);
+      item.layoutAlign = "STRETCH"; // Set AFTER adding to parent
     }
 
     report.appendChild(flowSection);
+    flowSection.layoutAlign = "STRETCH"; // Set AFTER adding to parent
   }
 
   // Add to page
@@ -281,9 +283,6 @@ export async function generateFindingsReport(
   // Position: 150px to the left of leftmost screen
   report.x = leftmostX - report.width - 150;
   report.y = topY;
-
-  // Lock the report to prevent accidental edits
-  report.locked = true;
 
   return report;
 }
@@ -344,7 +343,6 @@ export function clearAllCanvasDocumentation(): number {
     (n) => n.type === "FRAME" && n.name === REPORT_NAME
   );
   if (report) {
-    report.locked = false;
     report.remove();
     removed++;
   }
@@ -423,8 +421,6 @@ function createScreenSection(screenResult: ScreenResult): FrameNode {
   section.name = `screen-${screenResult.screen_id}`;
   section.layoutMode = "VERTICAL";
   section.primaryAxisSizingMode = "AUTO";
-  section.counterAxisSizingMode = "AUTO";
-  section.layoutAlign = "STRETCH";
   section.itemSpacing = 12;
   section.fills = [];
 
@@ -437,62 +433,91 @@ function createScreenSection(screenResult: ScreenResult): FrameNode {
   section.appendChild(screenTitle);
 
   for (const finding of screenResult.findings) {
-    section.appendChild(createFindingItem(finding));
+    const item = createFindingItem(finding);
+    section.appendChild(item);
+    item.layoutAlign = "STRETCH"; // Set AFTER adding to parent
   }
 
   return section;
 }
 
 function createFindingItem(finding: AnalysisFinding | { severity: string; title: string; description: string }): FrameNode {
+  // Determine colors based on severity
+  const iconColor = finding.severity === "critical" ? COLORS.critical
+    : finding.severity === "warning" ? COLORS.warning
+    : COLORS.info;
+  const iconBgColor = finding.severity === "critical" ? COLORS.criticalBg
+    : finding.severity === "warning" ? COLORS.warningBg
+    : COLORS.infoBg;
+
+  // Main container - horizontal flex, align-items: flex-start
+  // layoutAlign = "STRETCH" will be set by parent after appendChild
   const item = figma.createFrame();
   item.name = "finding";
-  item.layoutMode = "VERTICAL";
+  item.layoutMode = "HORIZONTAL";
   item.primaryAxisSizingMode = "AUTO";
-  item.counterAxisSizingMode = "AUTO";
-  item.layoutAlign = "STRETCH";
-  item.itemSpacing = 6;
+  item.counterAxisAlignItems = "MIN"; // align-items: flex-start
+  item.itemSpacing = 12;
   item.paddingLeft = 16;
   item.paddingRight = 16;
   item.paddingTop = 16;
   item.paddingBottom = 16;
-  item.cornerRadius = 6;
+  item.cornerRadius = 8;
   item.fills = [{ type: "SOLID", color: COLORS.background }];
   item.strokes = [{ type: "SOLID", color: COLORS.border }];
   item.strokeWeight = 1;
 
-  // Severity dot color
-  const dotColor = finding.severity === "critical" ? COLORS.critical
-    : finding.severity === "warning" ? COLORS.warning
-    : COLORS.info;
+  // Severity icon container (fixed 32x32)
+  const iconContainer = figma.createFrame();
+  iconContainer.name = "icon";
+  iconContainer.layoutMode = "HORIZONTAL";
+  iconContainer.primaryAxisSizingMode = "FIXED";
+  iconContainer.counterAxisSizingMode = "FIXED";
+  iconContainer.resize(32, 32);
+  iconContainer.primaryAxisAlignItems = "CENTER";
+  iconContainer.counterAxisAlignItems = "CENTER";
+  iconContainer.cornerRadius = 6;
+  iconContainer.fills = [{ type: "SOLID", color: iconBgColor }];
 
-  // Title row with dot and title
-  const titleRow = figma.createFrame();
-  titleRow.name = "title-row";
-  titleRow.layoutMode = "HORIZONTAL";
-  titleRow.primaryAxisSizingMode = "AUTO";
-  titleRow.counterAxisSizingMode = "AUTO";
-  titleRow.layoutAlign = "STRETCH";
-  titleRow.counterAxisAlignItems = "CENTER";
-  titleRow.itemSpacing = 8;
-  titleRow.fills = [];
+  // Icon symbol
+  const iconSymbol = figma.createText();
+  iconSymbol.fontName = { family: "Inter", style: "Bold" };
+  iconSymbol.fontSize = 16;
+  if (finding.severity === "critical") {
+    iconSymbol.characters = "×";
+  } else if (finding.severity === "warning") {
+    iconSymbol.characters = "!";
+  } else {
+    iconSymbol.characters = "i";
+  }
+  iconSymbol.fills = [{ type: "SOLID", color: iconColor }];
+  iconContainer.appendChild(iconSymbol);
 
-  const dot = figma.createEllipse();
-  dot.name = "dot";
-  dot.resize(6, 6);
-  dot.fills = [{ type: "SOLID", color: dotColor }];
-  titleRow.appendChild(dot);
+  item.appendChild(iconContainer);
 
+  // Content column - flex: 1 1 0 (fills remaining width)
+  const content = figma.createFrame();
+  content.name = "content";
+  content.layoutMode = "VERTICAL";
+  content.primaryAxisSizingMode = "AUTO";
+  content.itemSpacing = 4;
+  content.fills = [];
+
+  // Add content to item first, then set layoutGrow
+  item.appendChild(content);
+  content.layoutGrow = 1; // flex: 1 - fills remaining horizontal space
+
+  // Title text
   const titleText = figma.createText();
-  titleText.fontName = { family: "Inter", style: "Medium" };
-  titleText.fontSize = 12;
-  titleText.lineHeight = { value: 16, unit: "PIXELS" };
+  titleText.name = "title";
+  titleText.fontName = { family: "Inter", style: "Semi Bold" };
+  titleText.fontSize = 13;
+  titleText.lineHeight = { value: 18, unit: "PIXELS" };
   titleText.characters = finding.title;
   titleText.fills = [{ type: "SOLID", color: COLORS.foreground }];
-  titleText.layoutGrow = 1;
   titleText.textAutoResize = "HEIGHT";
-  titleRow.appendChild(titleText);
-
-  item.appendChild(titleRow);
+  content.appendChild(titleText);
+  titleText.layoutAlign = "STRETCH"; // align-self: stretch - after appendChild
 
   // Description (clean up redundant text)
   let description = finding.description;
@@ -502,14 +527,15 @@ function createFindingItem(finding: AnalysisFinding | { severity: string; title:
 
   if (description) {
     const descText = figma.createText();
+    descText.name = "description";
     descText.fontName = { family: "Inter", style: "Regular" };
     descText.fontSize = 12;
-    descText.lineHeight = { value: 16, unit: "PIXELS" };
+    descText.lineHeight = { value: 18, unit: "PIXELS" };
     descText.characters = description;
     descText.fills = [{ type: "SOLID", color: COLORS.mutedForeground }];
-    descText.layoutAlign = "STRETCH";
     descText.textAutoResize = "HEIGHT";
-    item.appendChild(descText);
+    content.appendChild(descText);
+    descText.layoutAlign = "STRETCH"; // align-self: stretch - after appendChild
   }
 
   return item;
