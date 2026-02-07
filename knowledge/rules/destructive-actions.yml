@@ -1,0 +1,61 @@
+name: Destructive Actions
+description: >
+  Actions that delete, remove, or irreversibly modify data should require
+  explicit confirmation to prevent accidental data loss.
+
+rules:
+  - id: delete-no-confirmation
+    name: Destructive action has no confirmation dialog
+    severity: critical
+    description: >
+      This destructive action (delete, remove, clear) has no visible
+      confirmation step. Users might accidentally trigger it and lose data.
+    triggers:
+      pattern_types:
+        - destructive-action
+      layer_name_patterns:
+        - "(?i)(delete|remove|destroy|clear.?all|reset|revoke|deactivate)"
+      component_names:
+        - Button
+    expects:
+      in_screen:
+        - component_names: ["AlertDialog", "Alert Dialog", "Dialog"]
+        - layer_name_patterns: ["(?i)(confirm|are.?you.?sure|modal|dialog)"]
+      in_flow:
+        - component_names: ["AlertDialog", "Alert Dialog"]
+        - layer_name_patterns: ["(?i)(confirm.?delete|confirm.?remove|are.?you.?sure)"]
+    recommendation:
+      message: >
+        Add a confirmation dialog before this destructive action. Use an
+        Alert Dialog with a clear description of what will happen and a
+        prominent cancel option.
+      components:
+        - shadcn_id: alert-dialog
+          label: "Confirmation Dialog"
+        - shadcn_id: button
+          variant: destructive
+          label: "Destructive Action Button"
+
+  - id: no-undo
+    name: Destructive action has no undo option
+    severity: info
+    description: >
+      After completing a destructive action, providing an undo option
+      (like a toast with an undo button) adds a safety net.
+    triggers:
+      pattern_types:
+        - destructive-action
+    expects:
+      in_flow:
+        - component_names: ["Toast", "Sonner"]
+        - layer_name_patterns: ["(?i)(undo|restore|recover)"]
+    recommendation:
+      message: >
+        Consider adding an undo toast after destructive actions complete,
+        giving users a brief window to reverse the action.
+      components:
+        - shadcn_id: toast
+          label: "Undo Toast"
+        - shadcn_id: button
+          variant: outline
+          label: "Undo Button"

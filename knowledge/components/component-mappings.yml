@@ -1,0 +1,99 @@
+mappings:
+  empty-states:
+    description: "Components for empty/zero-data states"
+    primary:
+      - shadcn_id: card
+        usage: "Container for empty state messaging and illustration"
+      - shadcn_id: button
+        usage: "CTA to create first item or take action"
+    supporting:
+      - shadcn_id: separator
+        usage: "Visual separator if empty state is inline"
+
+  loading-states:
+    description: "Components for loading/pending states"
+    primary:
+      - shadcn_id: skeleton
+        usage: "Placeholder mimicking content layout during load"
+      - shadcn_id: progress
+        usage: "Determinate progress bar for known-length operations"
+    supporting:
+      - shadcn_id: button
+        variant: loading
+        usage: "Button with spinner for async actions"
+
+  error-states:
+    description: "Components for error and validation feedback"
+    primary:
+      - shadcn_id: alert
+        variant: destructive
+        usage: "Prominent error messaging for form/page errors"
+      - shadcn_id: form-message
+        variant: destructive
+        usage: "Inline field validation message"
+      - shadcn_id: toast
+        variant: destructive
+        usage: "Transient error notification"
+    supporting:
+      - shadcn_id: input
+        variant: error
+        usage: "Input field in error state with red border"
+
+  destructive-actions:
+    description: "Components for confirming irreversible actions"
+    primary:
+      - shadcn_id: alert-dialog
+        usage: "Confirmation modal before destructive action"
+      - shadcn_id: toast
+        usage: "Undo toast after destructive action completes"
+    supporting:
+      - shadcn_id: button
+        variant: destructive
+        usage: "Visually distinct destructive action button"
+
+  permissions:
+    description: "Components for access control states"
+    primary:
+      - shadcn_id: alert
+        usage: "Permission denied or restricted access message"
+      - shadcn_id: button
+        variant: disabled
+        usage: "Disabled state for unauthorized actions"
+    supporting:
+      - shadcn_id: tooltip
+        usage: "Explain why an action is disabled due to permissions"
+
+  connectivity:
+    description: "Components for network/offline states"
+    primary:
+      - shadcn_id: alert
+        variant: destructive
+        usage: "Connection error or offline banner"
+      - shadcn_id: button
+        usage: "Retry connection action"
+    supporting:
+      - shadcn_id: toast
+        usage: "Connection restored notification"
+
+  boundary-conditions:
+    description: "Components for edge numeric/data states"
+    primary:
+      - shadcn_id: badge
+        usage: "Overflow indicator (e.g., 99+)"
+      - shadcn_id: tooltip
+        usage: "Show full value on truncated content"
+    supporting:
+      - shadcn_id: alert
+        usage: "Limit reached messaging"
+
+  edge-inputs:
+    description: "Components for input edge cases"
+    primary:
+      - shadcn_id: form-message
+        usage: "Character count and format hints"
+      - shadcn_id: input
+        variant: error
+        usage: "Invalid input visual feedback"
+    supporting:
+      - shadcn_id: tooltip
+        usage: "Input format guidance and requirements"

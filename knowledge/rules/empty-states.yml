@@ -1,0 +1,83 @@
+name: Empty States
+description: >
+  Screens displaying collections, lists, or data-dependent content should
+  handle the case when there is no data to display.
+
+rules:
+  - id: list-empty-state
+    name: List/collection has no empty state
+    severity: warning
+    description: >
+      This list or collection view has no visible empty state. Users need
+      to see a clear message when there are zero items, ideally with a
+      CTA to create their first item.
+    triggers:
+      pattern_types:
+        - list
+      layer_name_patterns:
+        - "(?i)(list|feed|timeline|cards|items|collection|grid)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(empty|no.?items|no.?data|zero|nothing|get.?started)"]
+      in_flow:
+        - layer_name_patterns: ["(?i)(empty.?state|no.?items|first.?item)"]
+    recommendation:
+      message: >
+        Add an empty state for this collection — show a friendly message
+        explaining why it's empty and a clear action to add the first item.
+      components:
+        - shadcn_id: card
+          label: "Empty State Card"
+        - shadcn_id: button
+          label: "Create First Item CTA"
+
+  - id: table-empty-state
+    name: Table/data grid has no empty state
+    severity: warning
+    description: >
+      Data tables should show a clear empty state rather than an empty
+      grid with headers and no rows.
+    triggers:
+      component_names:
+        - Table
+        - DataTable
+      layer_name_patterns:
+        - "(?i)(table|data.?grid|data.?table)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(empty|no.?data|no.?rows|no.?results)"]
+      in_flow:
+        - layer_name_patterns: ["(?i)(empty.?table|no.?data)"]
+    recommendation:
+      message: >
+        Add an empty state for this table — show a message in the table
+        body area explaining there's no data yet.
+      components:
+        - shadcn_id: table
+          label: "Table with Empty Row"
+        - shadcn_id: card
+          label: "Empty Data Illustration"
+
+  - id: dashboard-empty
+    name: Dashboard widgets have no empty/zero state
+    severity: info
+    description: >
+      Dashboard or analytics views should handle the state when there's
+      no data yet (new user, no activity, fresh account).
+    triggers:
+      layer_name_patterns:
+        - "(?i)(dashboard|analytics|overview|stats|metrics)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(empty|no.?data|getting.?started|onboard)"]
+      in_flow:
+        - layer_name_patterns: ["(?i)(onboarding|welcome|first.?time)"]
+    recommendation:
+      message: >
+        Consider what new users see on this dashboard before they have data.
+        Add onboarding prompts or empty state cards for each widget.
+      components:
+        - shadcn_id: card
+          label: "Onboarding Card"
+        - shadcn_id: button
+          label: "Getting Started CTA"
