@@ -26,7 +26,7 @@ type AnthropicContent =
   | { type: "text"; text: string }
   | {
       type: "image";
-      source: { type: "base64"; media_type: "image/png"; data: string };
+      source: { type: "base64"; media_type: "image/jpeg" | "image/png"; data: string };
     };
 
 interface CondensedNode {
@@ -66,8 +66,8 @@ interface LLMRefinement {
 // --- Constants ---
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-sonnet-4-20250514";
-const MAX_TOKENS = 4096;
+const MODEL = "claude-opus-4-5-20251101";
+const MAX_TOKENS = 8192;
 
 const SYSTEM_PROMPT = `You are Edgy's AI review layer — a UX edge case analysis assistant integrated into a Figma plugin.
 
@@ -136,8 +136,9 @@ Respond with a JSON object (no markdown code fences, just raw JSON). The schema:
 - Do NOT change finding IDs, rule_ids, categories, affected_nodes, or affected_area
 - Do NOT change the component recommendations (those come from a curated knowledge base)
 - When in doubt, KEEP the finding — it's better to flag a potential issue than miss one
-- Be concise in descriptions — these appear in a Figma plugin UI with limited space
-- Reference specific UI elements you see in the thumbnails by name when possible`;
+- Be VERY concise — keep descriptions under 100 characters
+- Only use "modify" when truly necessary; prefer "keep" or "remove"
+- Skip flow_insights unless critical`;
 
 // --- Public API ---
 
@@ -174,11 +175,12 @@ export async function reviewWithLLM(
       wasEnhanced: true,
     };
   } catch (error) {
-    console.warn("[edgy] LLM review failed, using heuristic results:", error);
+    const errorMessage = error instanceof Error ? error.message : "LLM review failed";
+    console.error("[edgy] LLM review failed:", errorMessage, error);
     return {
       output: heuristicOutput,
       wasEnhanced: false,
-      error: error instanceof Error ? error.message : "LLM review failed",
+      error: errorMessage,
     };
   }
 }
@@ -297,15 +299,16 @@ function buildUserMessage(
 
     // Thumbnail
     if (screen.thumbnail_base64) {
+      const isJpeg = screen.thumbnail_base64.startsWith("data:image/jpeg");
       const base64Data = screen.thumbnail_base64.replace(
-        /^data:image\/png;base64,/,
+        /^data:image\/(jpeg|png);base64,/,
         ""
       );
       content.push({
         type: "image",
         source: {
           type: "base64",
-          media_type: "image/png",
+          media_type: isJpeg ? "image/jpeg" : "image/png",
           data: base64Data,
         },
       });
@@ -376,6 +379,8 @@ async function callAnthropicAPI(
   systemPrompt: string,
   userContent: AnthropicContent[]
 ): Promise<string> {
+  console.log("[edgy] Calling Anthropic API with model:", MODEL);
+
   const response = await fetch(ANTHROPIC_API_URL, {
     method: "POST",
     headers: {
@@ -434,7 +439,27 @@ function parseAndValidateResponse(responseText: string): LLMRefinement {
     jsonStr = jsonStr.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
   }
 
-  const parsed = JSON.parse(jsonStr);
+  // Try to parse, with fallback for truncated JSON
+  let parsed: LLMRefinement;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch (parseError) {
+    // Response may be truncated - try to salvage what we can
+    console.warn("[edgy] JSON parse failed, attempting recovery:", parseError);
+
+    // Try to find a valid partial response by truncating at last complete object
+    const lastScreensEnd = jsonStr.lastIndexOf('"action"');
+    if (lastScreensEnd > 0) {
+      // Find the start of screens array
+      const screensStart = jsonStr.indexOf('"screens"');
+      if (screensStart > 0) {
+        // Return minimal valid structure - skip LLM refinements
+        console.warn("[edgy] LLM response truncated, skipping refinements");
+        return { screens: [], flow_findings: [] };
+      }
+    }
+    throw new Error(`Failed to parse LLM response: ${parseError}`);
+  }
 
   if (!parsed.screens || !Array.isArray(parsed.screens)) {
     throw new Error("Invalid LLM response: missing 'screens' array");

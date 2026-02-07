@@ -4,11 +4,11 @@ import { Sparkles, AlertTriangle } from "lucide-react";
 
 interface Props {
   results: AnalysisOutput;
-  onRenderToCanvas: () => void;
+  onExportToCanvas: () => void;
   onStartOver: () => void;
 }
 
-export function Results({ results, onRenderToCanvas, onStartOver }: Props) {
+export function Results({ results, onExportToCanvas, onStartOver }: Props) {
   const { summary } = results;
 
   return (
@@ -80,10 +80,10 @@ export function Results({ results, onRenderToCanvas, onStartOver }: Props) {
       {/* Actions */}
       <div className="flex flex-col gap-2 pt-2">
         <button
-          onClick={onRenderToCanvas}
+          onClick={onExportToCanvas}
           className="w-full py-2.5 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
         >
-          Place Findings on Canvas
+          Export to Canvas
         </button>
         <button
           onClick={onStartOver}
@@ -109,13 +109,17 @@ function LLMBadge({ results }: { results: AnalysisOutput }) {
   }
 
   return (
-    <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-yellow-100 text-yellow-700"
-      title={results.llm_error}
-    >
-      <AlertTriangle className="w-3 h-3" />
-      Heuristic only
-    </span>
+    <div className="flex flex-col gap-1">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-yellow-100 text-yellow-700">
+        <AlertTriangle className="w-3 h-3" />
+        Heuristic only
+      </span>
+      {results.llm_error && (
+        <span className="text-[10px] text-destructive">
+          {results.llm_error}
+        </span>
+      )}
+    </div>
   );
 }
 

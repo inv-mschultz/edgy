@@ -28,10 +28,10 @@ export async function extractScreens(
     let thumbnail_base64: string | undefined;
     try {
       const bytes = await frame.exportAsync({
-        format: "PNG",
-        constraint: { type: "WIDTH", value: 400 },
+        format: "JPG",
+        constraint: { type: "WIDTH", value: 256 },
       });
-      thumbnail_base64 = `data:image/png;base64,${figma.base64Encode(bytes)}`;
+      thumbnail_base64 = `data:image/jpeg;base64,${figma.base64Encode(bytes)}`;
     } catch {
       // Thumbnail export can fail for some node types — continue without it
     }

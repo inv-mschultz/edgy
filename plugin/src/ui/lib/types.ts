@@ -123,6 +123,8 @@ export type EdgeCaseCategory =
 
 // --- Plugin ↔ UI Messages ---
 
+// --- Plugin -> UI Messages ---
+
 export type PluginMessage =
   | { type: "selection-changed"; screens: { id: string; name: string }[] }
   | { type: "extraction-complete"; data: AnalysisInput }
@@ -130,11 +132,18 @@ export type PluginMessage =
   | { type: "render-complete" }
   | { type: "error"; message: string }
   | { type: "api-key-result"; key: string | null }
-  | { type: "api-key-saved" };
+  | { type: "api-key-saved" }
+  | { type: "findings-cleared" }
+  | { type: "canvas-documentation-cleared"; removedCount: number };
+
+// --- UI -> Plugin Messages ---
 
 export type UIMessage =
   | { type: "start-extraction" }
-  | { type: "render-results"; results: AnalysisOutput }
+  | { type: "save-findings"; results: AnalysisOutput }
   | { type: "get-api-key" }
   | { type: "set-api-key"; key: string }
-  | { type: "clear-api-key" };
+  | { type: "clear-api-key" }
+  | { type: "clear-findings"; screenIds: string[] }
+  | { type: "clear-canvas-documentation" }
+  | { type: "resize"; width: number; height: number };

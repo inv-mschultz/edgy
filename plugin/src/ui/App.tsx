@@ -1,6 +1,6 @@
 declare const __APP_VERSION__: string;
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { SelectScreens } from "./pages/SelectScreens";
 import { Analyzing } from "./pages/Analyzing";
 import { Results } from "./pages/Results";
@@ -15,6 +15,7 @@ import type {
 import { runAnalysis } from "./lib/analyze";
 import { getApiKey } from "./lib/api-key-store";
 import { reviewWithLLM } from "./lib/llm-reviewer";
+import { useCustomScrollbar } from "./hooks/useCustomScrollbar";
 import { Settings, Info as InfoIcon } from "lucide-react";
 
 type Page = "select" | "analyzing" | "results" | "settings" | "info";
@@ -27,6 +28,35 @@ export function App() {
   const [statusMessage, setStatusMessage] = useState("");
   const [results, setResults] = useState<AnalysisOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Custom scrollbar
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const customScrollbar = useCustomScrollbar(scrollRef);
+
+  // Resize handling
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startWidth = window.innerWidth;
+    const startHeight = window.innerHeight;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const deltaY = moveEvent.clientY - startY;
+      const newWidth = startWidth + deltaX;
+      const newHeight = startHeight + deltaY;
+      postToPlugin({ type: "resize", width: newWidth, height: newHeight });
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  }, []);
 
   // Listen for messages from plugin sandbox
   useEffect(() => {
@@ -49,11 +79,16 @@ export function App() {
           break;
 
         case "render-complete":
-          setStatusMessage("Done! Findings are on your canvas.");
+          setStatusMessage("Done! Findings exported to canvas.");
           break;
 
         case "error":
           setError(msg.message);
+          if (page === "analyzing") setPage("select");
+          break;
+
+        case "findings-cleared":
+          setResults(null);
           setPage("select");
           break;
       }
@@ -61,7 +96,7 @@ export function App() {
 
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, []);
+  }, [page]);
 
   async function handleExtractionComplete(data: AnalysisInput) {
     try {
@@ -70,6 +105,9 @@ export function App() {
 
       // Check if API key is configured for LLM review
       const apiKey = await getApiKey();
+      console.log("[edgy] API key retrieved:", apiKey ? `${apiKey.slice(0, 10)}...` : "null");
+
+      let output: AnalysisOutput;
 
       if (apiKey) {
         setStatusMessage("Reviewing with AI...");
@@ -80,17 +118,16 @@ export function App() {
           (msg) => setStatusMessage(msg)
         );
 
-        const output: AnalysisOutput = {
+        output = {
           ...llmResult.output,
           llm_enhanced: llmResult.wasEnhanced,
           llm_error: llmResult.error,
         };
-
-        setResults(output);
       } else {
-        setResults(heuristicOutput);
+        output = heuristicOutput;
       }
 
+      setResults(output);
       setPage("results");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Analysis failed");
@@ -100,15 +137,16 @@ export function App() {
 
   function handleAnalyze() {
     setError(null);
+    setResults(null);
     setPage("analyzing");
     setStatusMessage("Extracting screens...");
     postToPlugin({ type: "start-extraction" });
   }
 
-  function handleRenderResults() {
+  function handleExportToCanvas() {
     if (!results) return;
-    setStatusMessage("Rendering findings on canvas...");
-    postToPlugin({ type: "render-results", results });
+    setStatusMessage("Exporting findings to canvas...");
+    postToPlugin({ type: "save-findings", results });
   }
 
   function handleOpenSettings() {
@@ -122,16 +160,17 @@ export function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-screen overflow-hidden">
       {/* Navigation */}
-      <nav className="flex items-center justify-between px-4 py-3 border-b">
+      <nav className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b bg-background">
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold text-primary">EDGY</span>
           <span className="text-xs text-muted-foreground">Edge Case Analyzer</span>
         </div>
         <button
           onClick={handleOpenSettings}
-          className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          className="p-1.5 rounded border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          style={{ borderRadius: 4 }}
           title="Settings"
         >
           <Settings className="w-4 h-4" />
@@ -140,7 +179,7 @@ export function App() {
 
       {/* Error banner */}
       {error && (
-        <div className="px-4 py-2 bg-destructive/10 text-destructive text-xs">
+        <div className="flex-shrink-0 px-4 py-2 bg-destructive/10 text-destructive text-xs">
           {error}
           <button onClick={() => setError(null)} className="ml-2 underline">
             Dismiss
@@ -148,44 +187,62 @@ export function App() {
         </div>
       )}
 
-      {/* Pages */}
-      <div className="flex-1 overflow-auto">
-        {page === "select" && (
-          <SelectScreens
-            screens={screens}
-            onAnalyze={handleAnalyze}
-          />
-        )}
-        {page === "analyzing" && (
-          <Analyzing
-            statusMessage={statusMessage}
-            progress={progress}
-          />
-        )}
-        {page === "results" && results && (
-          <Results
-            results={results}
-            onRenderToCanvas={handleRenderResults}
-            onStartOver={() => {
-              setResults(null);
-              setPage("select");
-            }}
-          />
-        )}
-        {page === "settings" && (
-          <ApiKeySettings
-            onBack={() => setPage(previousPage)}
-          />
-        )}
-        {page === "info" && (
-          <Info
-            onBack={() => setPage(previousPage)}
-          />
+      {/* Scrollable content area with custom scrollbar */}
+      <div className="custom-scroll-container" style={{ flex: 1, minHeight: 0 }}>
+        <div ref={scrollRef} className="custom-scroll-content">
+          {page === "select" && (
+            <SelectScreens
+              screens={screens}
+              onAnalyze={handleAnalyze}
+            />
+          )}
+          {page === "analyzing" && (
+            <Analyzing
+              statusMessage={statusMessage}
+              progress={progress}
+            />
+          )}
+          {page === "results" && results && (
+            <Results
+              results={results}
+              onExportToCanvas={handleExportToCanvas}
+              onStartOver={() => {
+                setResults(null);
+                setPage("select");
+              }}
+            />
+          )}
+          {page === "settings" && (
+            <ApiKeySettings
+              onBack={() => setPage(previousPage)}
+            />
+          )}
+          {page === "info" && (
+            <Info
+              onBack={() => setPage(previousPage)}
+            />
+          )}
+        </div>
+
+        {customScrollbar.showScrollbar && (
+          <div
+            className={`custom-scrollbar-track ${customScrollbar.isDragging ? "dragging" : ""}`}
+            onClick={customScrollbar.handleTrackClick as any}
+          >
+            <div
+              className={`custom-scrollbar-thumb ${customScrollbar.isDragging ? "dragging" : ""}`}
+              style={{
+                height: `${customScrollbar.thumbHeight}px`,
+                top: `${customScrollbar.thumbTop}px`,
+              }}
+              onMouseDown={customScrollbar.handleThumbMouseDown as any}
+            />
+          </div>
         )}
       </div>
 
-      {/* Footer */}
-      <footer className="flex items-center justify-between px-4 py-2 border-t">
+      {/* Footer - sticky at bottom */}
+      <footer className="flex-shrink-0 relative flex items-center justify-between px-4 py-2 border-t bg-background">
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
             v {__APP_VERSION__}
@@ -196,11 +253,23 @@ export function App() {
         </div>
         <button
           onClick={handleOpenInfo}
-          className="p-1.5 rounded-full border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          className="p-1.5 border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          style={{ borderRadius: 4 }}
           title="Info"
         >
           <InfoIcon className="w-3.5 h-3.5" />
         </button>
+
+        {/* Resize handle */}
+        <div
+          className="resize-handle"
+          title="Resize"
+          onMouseDown={handleResizeMouseDown}
+        >
+          <svg viewBox="0 0 10 10" fill="currentColor" className="text-muted-foreground">
+            <path d="M0 10L10 0V10H0Z" />
+          </svg>
+        </div>
       </footer>
     </div>
   );

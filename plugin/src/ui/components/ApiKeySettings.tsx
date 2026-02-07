@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { getApiKey, setApiKey, clearApiKey } from "../lib/api-key-store";
-import { Key, Trash2, Check, AlertCircle } from "lucide-react";
+import { Key, Trash2, Check, AlertCircle, ArrowLeft, Eraser } from "lucide-react";
 
 export function ApiKeySettings({ onBack }: { onBack: () => void }) {
   const [key, setKey] = useState("");
@@ -8,12 +8,33 @@ export function ApiKeySettings({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<"idle" | "saved" | "error">("idle");
+  const [clearing, setClearing] = useState(false);
+  const [clearStatus, setClearStatus] = useState<{ type: "idle" | "success" | "error"; message?: string }>({ type: "idle" });
 
   useEffect(() => {
     getApiKey().then((k) => {
       setSavedKey(k);
       setLoading(false);
     });
+
+    // Listen for clear response
+    const handleMessage = (event: MessageEvent) => {
+      const msg = event.data.pluginMessage;
+      if (!msg) return;
+      if (msg.type === "canvas-documentation-cleared") {
+        setClearing(false);
+        setClearStatus({
+          type: "success",
+          message: msg.removedCount > 0
+            ? `Removed ${msg.removedCount} item${msg.removedCount !== 1 ? "s" : ""} from canvas`
+            : "No Edgy elements found on canvas",
+        });
+        setTimeout(() => setClearStatus({ type: "idle" }), 3000);
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
   }, []);
 
   async function handleSave() {
@@ -65,9 +86,11 @@ export function ApiKeySettings({ onBack }: { onBack: () => void }) {
       <div>
         <button
           onClick={onBack}
-          className="text-xs text-muted-foreground hover:text-foreground"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary border transition-colors"
+          style={{ borderRadius: 4 }}
         >
-          &larr; Back
+          <ArrowLeft className="w-3 h-3" />
+          Back
         </button>
       </div>
 
@@ -144,6 +167,44 @@ export function ApiKeySettings({ onBack }: { onBack: () => void }) {
           Without a key, Edgy uses heuristic analysis only. With a key, findings
           are reviewed by Claude to remove false positives and improve descriptions.
         </p>
+      </div>
+
+      {/* Clear Canvas Documentation */}
+      <div className="rounded-lg border p-4 flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <Eraser className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium">Canvas Cleanup</span>
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          Remove all Edgy health indicators and reports from the current page.
+        </p>
+
+        <button
+          onClick={() => {
+            setClearing(true);
+            setClearStatus({ type: "idle" });
+            parent.postMessage({ pluginMessage: { type: "clear-canvas-documentation" } }, "*");
+          }}
+          disabled={clearing}
+          className="w-full py-2 px-4 rounded-lg border text-sm font-medium hover:bg-secondary disabled:opacity-50 transition-colors"
+          style={{ borderRadius: 4 }}
+        >
+          {clearing ? "Clearing..." : "Clear Canvas Documentation"}
+        </button>
+
+        {clearStatus.type === "success" && (
+          <div className="flex items-center gap-1 text-xs text-green-600">
+            <Check className="w-3 h-3" />
+            {clearStatus.message}
+          </div>
+        )}
+        {clearStatus.type === "error" && (
+          <div className="flex items-center gap-1 text-xs text-destructive">
+            <AlertCircle className="w-3 h-3" />
+            Failed to clear canvas
+          </div>
+        )}
       </div>
     </div>
   );

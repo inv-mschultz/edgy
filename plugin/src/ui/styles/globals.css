@@ -36,3 +36,70 @@
     padding: 0;
   }
 }
+
+/* Custom scrollbar styles */
+.custom-scroll-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.custom-scroll-content {
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.custom-scroll-content::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Opera */
+}
+
+.custom-scrollbar-track {
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  bottom: 4px;
+  width: 6px;
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  z-index: 10;
+}
+
+.custom-scrollbar-thumb {
+  position: absolute;
+  width: 100%;
+  border-radius: 3px;
+  background: hsl(var(--muted-foreground) / 0.3);
+  transition: background 0.15s ease;
+  cursor: pointer;
+}
+
+.custom-scrollbar-thumb:hover,
+.custom-scrollbar-thumb.dragging {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Resize handle */
+.resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  cursor: nwse-resize;
+  opacity: 0.3;
+  transition: opacity 0.15s ease;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+
+.resize-handle:hover {
+  opacity: 0.6;
+}
+
+.resize-handle svg {
+  width: 8px;
+  height: 8px;
+}

@@ -1,15 +1,25 @@
 /// <reference types="@figma/plugin-typings" />
 
 import { extractScreens } from "./extractor";
-import { renderFindings } from "./annotator";
-import { generateReport } from "./reporter";
-import { placeComponentSuggestions } from "./component-placer";
-import type { UIMessage, PluginMessage, AnalysisOutput } from "../ui/lib/types";
+import {
+  renderHealthIndicator,
+  generateFindingsReport,
+  clearAllFindings,
+  clearAllCanvasDocumentation,
+  findFrameById,
+  type StoredFindingsData,
+} from "./health-indicator";
+import type {
+  UIMessage,
+  PluginMessage,
+  AnalysisOutput,
+} from "../ui/lib/types";
 
 // Show the plugin UI
 figma.showUI(__html__, { width: 400, height: 560, themeColors: true });
 
-// Track the current selection
+// --- Selection Handling ---
+
 function sendSelectionUpdate() {
   const screens = figma.currentPage.selection
     .filter((node): node is FrameNode => node.type === "FRAME")
@@ -25,7 +35,8 @@ figma.on("selectionchange", sendSelectionUpdate);
 // Send initial selection
 sendSelectionUpdate();
 
-// Handle messages from UI
+// --- Message Handlers ---
+
 figma.ui.onmessage = async (msg: UIMessage) => {
   switch (msg.type) {
     case "start-extraction": {
@@ -72,35 +83,92 @@ figma.ui.onmessage = async (msg: UIMessage) => {
       break;
     }
 
-    case "render-results": {
+    case "save-findings": {
       try {
         const results: AnalysisOutput = msg.results;
 
-        // Get original selected frames for positioning
-        const selectedFrames = figma.currentPage.selection.filter(
-          (node): node is FrameNode => node.type === "FRAME"
-        );
+        // Collect frames for each screen
+        const frames: FrameNode[] = [];
+        for (const screenResult of results.screens) {
+          const frame = findFrameById(screenResult.screen_id);
+          if (frame) frames.push(frame);
+        }
 
-        // Render finding annotations next to each screen
-        await renderFindings(results, selectedFrames);
+        if (frames.length === 0) {
+          throw new Error("No frames found for the analyzed screens");
+        }
 
-        // Generate the summary report frame
-        await generateReport(results, selectedFrames);
+        // Render health indicator badges for each screen
+        for (const screenResult of results.screens) {
+          const frame = findFrameById(screenResult.screen_id);
+          if (frame) {
+            const storageData: StoredFindingsData = {
+              version: 1,
+              analyzed_at: results.completed_at,
+              llm_enhanced: results.llm_enhanced,
+              summary: {
+                total: screenResult.findings.length,
+                critical: screenResult.findings.filter((f) => f.severity === "critical").length,
+                warning: screenResult.findings.filter((f) => f.severity === "warning").length,
+                info: screenResult.findings.filter((f) => f.severity === "info").length,
+              },
+              findings: screenResult.findings,
+            };
 
-        // Place component suggestion frames
-        await placeComponentSuggestions(results);
+            await renderHealthIndicator(frame, storageData);
+          }
+        }
+
+        // Generate findings report frame
+        await generateFindingsReport(results, frames);
 
         const doneMsg: PluginMessage = { type: "render-complete" };
         figma.ui.postMessage(doneMsg);
       } catch (error) {
         const errorMsg: PluginMessage = {
           type: "error",
-          message: error instanceof Error ? error.message : "Rendering failed",
+          message: error instanceof Error ? error.message : "Saving findings failed",
         };
         figma.ui.postMessage(errorMsg);
       }
       break;
     }
 
+    case "clear-findings": {
+      try {
+        const frames: FrameNode[] = [];
+        for (const screenId of msg.screenIds) {
+          const frame = findFrameById(screenId);
+          if (frame) frames.push(frame);
+        }
+        clearAllFindings(frames);
+        const doneMsg: PluginMessage = { type: "findings-cleared" };
+        figma.ui.postMessage(doneMsg);
+      } catch (error) {
+        const errorMsg: PluginMessage = {
+          type: "error",
+          message: error instanceof Error ? error.message : "Clearing findings failed",
+        };
+        figma.ui.postMessage(errorMsg);
+      }
+      break;
+    }
+
+    case "resize": {
+      const width = Math.max(300, Math.min(800, msg.width));
+      const height = Math.max(400, Math.min(900, msg.height));
+      figma.ui.resize(width, height);
+      break;
+    }
+
+    case "clear-canvas-documentation": {
+      const removed = clearAllCanvasDocumentation();
+      const doneMsg: PluginMessage = {
+        type: "canvas-documentation-cleared",
+        removedCount: removed,
+      };
+      figma.ui.postMessage(doneMsg);
+      break;
+    }
   }
 };
