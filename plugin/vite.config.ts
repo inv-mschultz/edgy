@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { viteSingleFile } from "vite-plugin-singlefile";
 import path from "path";
+import fs from "fs";
 
 // Figma plugins require two separate outputs:
 // 1. plugin.js — the sandbox code (no DOM, no imports)
@@ -10,9 +11,15 @@ import path from "path";
 
 export default defineConfig(({ mode }) => {
   const isUI = mode === "ui";
+  const versionData = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, "version.json"), "utf-8")
+  );
 
   if (isUI) {
     return {
+      define: {
+        __APP_VERSION__: JSON.stringify(versionData.version),
+      },
       plugins: [
         react(),
         viteSingleFile(),

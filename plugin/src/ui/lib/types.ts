@@ -17,6 +17,12 @@ export interface ExtractedNode {
   height: number;
   children: ExtractedNode[];
   textContent?: string;
+  /** Solid fill colors as [r, g, b] tuples (0-1 range). Only visible solid fills. */
+  fills?: [number, number, number][];
+  /** Solid stroke colors as [r, g, b] tuples (0-1 range). Only visible solid strokes. */
+  strokes?: [number, number, number][];
+  /** Stroke weight in pixels. Only present when strokes exist. */
+  strokeWeight?: number;
 }
 
 export interface ExtractedScreen {
@@ -99,6 +105,8 @@ export interface AnalysisOutput {
   };
   screens: ScreenResult[];
   flow_findings: FlowFinding[];
+  llm_enhanced?: boolean;
+  llm_error?: string;
 }
 
 // --- Edge Case Categories ---
@@ -120,8 +128,13 @@ export type PluginMessage =
   | { type: "extraction-complete"; data: AnalysisInput }
   | { type: "thumbnail-progress"; current: number; total: number }
   | { type: "render-complete" }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "api-key-result"; key: string | null }
+  | { type: "api-key-saved" };
 
 export type UIMessage =
   | { type: "start-extraction" }
-  | { type: "render-results"; results: AnalysisOutput };
+  | { type: "render-results"; results: AnalysisOutput }
+  | { type: "get-api-key" }
+  | { type: "set-api-key"; key: string }
+  | { type: "clear-api-key" };

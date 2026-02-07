@@ -20,17 +20,17 @@ rules:
         - DatePicker
         - RadioGroup
         - Checkbox
-      layer_name_patterns:
-        - "(?i)(input|field|form|text.?area|select|dropdown)"
     expects:
       in_screen:
-        - component_names: ["Input"]
+        - component_names: ["Input", "Textarea", "Select"]
           with_properties:
             State: "Error"
-        - layer_name_patterns: ["(?i)(error|invalid|validation|destructive)"]
-        - component_names: ["FormMessage", "Form Message"]
+        - layer_name_patterns: ["(?i)(error|invalid|validation|destructive|failed|alert)"]
+        - component_names: ["FormMessage", "Form Message", "FormDescription", "HelperText", "ErrorMessage"]
+        - with_visual_cues: ["error"]
       in_flow:
-        - layer_name_patterns: ["(?i)error.?state", "(?i)validation.?error"]
+        - layer_name_patterns: ["(?i)(error|validation|invalid|alert|warning)"]
+        - with_visual_cues: ["error"]
     recommendation:
       message: >
         Add error variants for form fields with descriptive validation
@@ -59,8 +59,10 @@ rules:
       in_screen:
         - component_names: ["Alert", "Toast", "Sonner"]
         - layer_name_patterns: ["(?i)(error|fail|alert|toast|notification)"]
+        - with_visual_cues: ["error"]
       in_flow:
         - layer_name_patterns: ["(?i)(error|fail|something.?went.?wrong)"]
+        - with_visual_cues: ["error"]
     recommendation:
       message: >
         Add error feedback for form submission — show an inline alert or
@@ -83,13 +85,11 @@ rules:
     triggers:
       pattern_types:
         - search
-      layer_name_patterns:
-        - "(?i)(search|filter|query)"
     expects:
       in_screen:
-        - layer_name_patterns: ["(?i)(no.?results|not.?found|empty|zero)"]
+        - layer_name_patterns: ["(?i)(no.?results|not.?found|empty|zero|nothing)"]
       in_flow:
-        - layer_name_patterns: ["(?i)(no.?results|not.?found)"]
+        - layer_name_patterns: ["(?i)(no.?results|not.?found|empty)"]
     recommendation:
       message: >
         Add a "no results" state for search/filter — show a helpful message
@@ -144,13 +144,13 @@ rules:
         - Textarea
         - Select
       layer_name_patterns:
-        - "(?i)(input|field|form|text.?area|select)"
+        - "(?i)(error|invalid|destructive|warning|alert)"
     expects:
       in_screen:
-        - layer_name_patterns: ["(?i)(error.?icon|warning.?icon|alert.?icon|exclamation|error.?message)"]
-        - component_names: ["FormMessage", "Form Message"]
+        - layer_name_patterns: ["(?i)(error.?icon|warning.?icon|alert.?icon|exclamation|error.?message|validation.?message|helper.?text|form.?message|hint)"]
+        - component_names: ["FormMessage", "Form Message", "FormDescription", "HelperText"]
       in_flow:
-        - layer_name_patterns: ["(?i)(error.?icon|validation.?message)"]
+        - layer_name_patterns: ["(?i)(error.?icon|validation.?message|error.?text|helper)"]
     recommendation:
       message: >
         Ensure error states use colour, an icon, and descriptive text together —

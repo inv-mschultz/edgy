@@ -19,7 +19,7 @@ rules:
         - "(?i)(bio|description|comment|message|note|textarea|long.?text)"
     expects:
       in_screen:
-        - layer_name_patterns: ["(?i)(counter|count|limit|max|character|remaining)"]
+        - layer_name_patterns: ["(?i)(counter|count|limit|max|character|remaining|\\d+\\/\\d+|chars)"]
     recommendation:
       message: >
         Add a character counter or limit indicator so users know the

@@ -17,6 +17,7 @@ import { loadRules, matchRules } from "./rule-engine.js";
 import { checkExpectations } from "./expect-checker.js";
 import { generateFindings, generateFlowFindings } from "./finding-generator.js";
 import { mapComponents } from "./component-mapper.js";
+import { groupScreensByFlow, getFlowSiblings } from "./flow-grouper.js";
 import type { AnalysisInput, AnalysisOutput, ScreenResult } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -42,6 +43,10 @@ async function main() {
   const rules = await loadRules(KNOWLEDGE_DIR);
   console.error(`[edgy] Loaded ${rules.length} rules across ${new Set(rules.map(r => r.category)).size} categories`);
 
+  // Group screens by flow (shared name prefix)
+  const flowGroups = groupScreensByFlow(input.screens);
+  console.error(`[edgy] Detected ${flowGroups.size} flow group(s): ${[...flowGroups.keys()].join(", ")}`);
+
   // Analyze each screen
   const screenResults: ScreenResult[] = [];
 
@@ -56,11 +61,14 @@ async function main() {
     const triggeredRules = matchRules(patterns, rules);
     console.error(`[edgy]   ${triggeredRules.length} rules triggered`);
 
-    // Step 3: Check expectations (are the required states present?)
+    // Step 3: Check expectations (with flow-aware 3-tier checking)
+    const flowSiblings = getFlowSiblings(screen, flowGroups);
+    const flowGroupTrees = flowSiblings.map((s) => s.node_tree);
     const unmetExpectations = checkExpectations(
       triggeredRules,
       screen.node_tree,
-      input.screens.map((s) => s.node_tree)
+      input.screens.map((s) => s.node_tree),
+      flowGroupTrees
     );
     console.error(`[edgy]   ${unmetExpectations.length} unmet expectations`);
 
@@ -76,6 +84,9 @@ async function main() {
       findings: findingsWithComponents,
     });
   }
+
+  // Deduplicate findings within each flow group
+  deduplicateFindings(screenResults, flowGroups);
 
   // Generate flow-level findings
   const flowFindings = generateFlowFindings(input.screens, rules, KNOWLEDGE_DIR);
@@ -106,6 +117,32 @@ async function main() {
   }
 
   console.error(`[edgy] Done. ${totalFindings} findings total.`);
+}
+
+/**
+ * Deduplicates findings within flow groups: if the same rule_id
+ * produced findings on multiple screens in a group, keep only the first.
+ */
+function deduplicateFindings(
+  screenResults: ScreenResult[],
+  flowGroups: Map<string, { screen_id: string }[]>
+) {
+  for (const [, screens] of flowGroups) {
+    if (screens.length <= 1) continue;
+
+    const screenIds = new Set(screens.map((s) => s.screen_id));
+    const seenRuleIds = new Set<string>();
+
+    for (const result of screenResults) {
+      if (!screenIds.has(result.screen_id)) continue;
+
+      result.findings = result.findings.filter((f) => {
+        if (seenRuleIds.has(f.rule_id)) return false;
+        seenRuleIds.add(f.rule_id);
+        return true;
+      });
+    }
+  }
 }
 
 function countBySeverity(

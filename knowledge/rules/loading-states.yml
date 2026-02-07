@@ -15,19 +15,13 @@ rules:
       pattern_types:
         - list
         - data-display
-      component_names:
-        - Table
-        - Card
-        - Avatar
-      layer_name_patterns:
-        - "(?i)(feed|timeline|profile|dashboard|data)"
     expects:
       in_screen:
         - component_names: ["Skeleton"]
-        - layer_name_patterns: ["(?i)(loading|skeleton|shimmer|placeholder|spinner)"]
+        - layer_name_patterns: ["(?i)(loading|skeleton|shimmer|placeholder|spinner|progress|fetching)"]
       in_flow:
         - component_names: ["Skeleton", "Spinner", "Progress"]
-        - layer_name_patterns: ["(?i)(loading|skeleton)"]
+        - layer_name_patterns: ["(?i)(loading|skeleton|shimmer)"]
     recommendation:
       message: >
         Add a loading skeleton that mimics the layout of the actual content.
@@ -75,14 +69,17 @@ rules:
       Pages that fetch data on mount should show an initial loading state
       before content is available.
     triggers:
+      pattern_types:
+        - data-display
+        - list
       layer_name_patterns:
-        - "(?i)(page|screen|view|detail|profile)"
+        - "(?i)(detail|profile|dashboard|feed|inbox|timeline|activity)"
     expects:
       in_screen:
         - component_names: ["Skeleton", "Spinner"]
-        - layer_name_patterns: ["(?i)(loading|skeleton)"]
+        - layer_name_patterns: ["(?i)(loading|skeleton|shimmer|placeholder|fetching)"]
       in_flow:
-        - layer_name_patterns: ["(?i)(loading|skeleton|splash)"]
+        - layer_name_patterns: ["(?i)(loading|skeleton|splash|fetching)"]
     recommendation:
       message: >
         Consider adding an initial loading state for this page with

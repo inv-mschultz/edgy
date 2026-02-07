@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "npm run build && vite build --watch",
-    "build": "vite build && vite build --mode ui",
+    "build": "node scripts/bump-version.js && vite build && vite build --mode ui",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

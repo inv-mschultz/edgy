@@ -104,6 +104,27 @@ async function extractNode(node: SceneNode): Promise<ExtractedNode> {
     extracted.textContent = node.characters;
   }
 
+  // Extract visual properties (fills, strokes)
+  if ("fills" in node && node.fills !== figma.mixed) {
+    const solidFills = (node.fills as ReadonlyArray<Paint>)
+      .filter((p): p is SolidPaint => p.type === "SOLID" && p.visible !== false)
+      .map((p) => [p.color.r, p.color.g, p.color.b] as [number, number, number]);
+    if (solidFills.length > 0) {
+      extracted.fills = solidFills;
+    }
+  }
+
+  if ("strokes" in node) {
+    const solidStrokes = (node.strokes as ReadonlyArray<Paint>)
+      .filter((p): p is SolidPaint => p.type === "SOLID" && p.visible !== false)
+      .map((p) => [p.color.r, p.color.g, p.color.b] as [number, number, number]);
+    if (solidStrokes.length > 0) {
+      extracted.strokes = solidStrokes;
+      const sw = (node as any).strokeWeight;
+      extracted.strokeWeight = typeof sw === "number" ? sw : 1;
+    }
+  }
+
   // Recurse into children
   if ("children" in node) {
     const sceneChildren = node.children.filter(

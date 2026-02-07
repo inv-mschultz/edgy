@@ -18,10 +18,10 @@ rules:
         - button
     expects:
       in_screen:
-        - layer_name_patterns: ["(?i)(disabled|unauthorized|forbidden|no.?permission|locked|restricted)"]
-        - component_names: ["Tooltip"]
+        - layer_name_patterns: ["(?i)(disabled|unauthorized|forbidden|no.?permission|locked|restricted|read.?only|viewer|can.?t|cannot)"]
+        - component_names: ["Tooltip", "Popover"]
       in_flow:
-        - layer_name_patterns: ["(?i)(permission|access.?denied|role|unauthorized)"]
+        - layer_name_patterns: ["(?i)(permission|access.?denied|role|unauthorized|forbidden|locked)"]
     recommendation:
       message: >
         Add a disabled state for this action when the user lacks permission.

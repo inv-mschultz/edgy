@@ -54,6 +54,24 @@ figma.ui.onmessage = async (msg: UIMessage) => {
       break;
     }
 
+    case "get-api-key": {
+      const key = await figma.clientStorage.getAsync("edgy-anthropic-api-key");
+      figma.ui.postMessage({ type: "api-key-result", key: key || null });
+      break;
+    }
+
+    case "set-api-key": {
+      await figma.clientStorage.setAsync("edgy-anthropic-api-key", msg.key);
+      figma.ui.postMessage({ type: "api-key-saved" });
+      break;
+    }
+
+    case "clear-api-key": {
+      await figma.clientStorage.deleteAsync("edgy-anthropic-api-key");
+      figma.ui.postMessage({ type: "api-key-saved" });
+      break;
+    }
+
     case "render-results": {
       try {
         const results: AnalysisOutput = msg.results;

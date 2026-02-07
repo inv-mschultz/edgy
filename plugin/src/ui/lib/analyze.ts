@@ -13,6 +13,10 @@ import {
   generateFlowFindings,
   resetFindingCounter,
 } from "@analysis/finding-generator";
+import {
+  groupScreensByFlow,
+  getFlowSiblings,
+} from "@analysis/flow-grouper";
 import { loadBundledRules, loadBundledMappings } from "./knowledge-loader";
 import type {
   AnalysisInput,
@@ -43,6 +47,9 @@ export function runAnalysis(input: AnalysisInput): AnalysisOutput {
   const rules = loadBundledRules();
   const mappings = loadBundledMappings();
 
+  // Group screens by flow (shared name prefix)
+  const flowGroups = groupScreensByFlow(input.screens as any[]);
+
   const screenResults: ScreenResult[] = [];
 
   for (const screen of input.screens) {
@@ -52,11 +59,14 @@ export function runAnalysis(input: AnalysisInput): AnalysisOutput {
     // Step 2: Match rules against detected patterns
     const triggeredRules = matchRules(patterns, rules);
 
-    // Step 3: Check expectations
+    // Step 3: Check expectations (with flow-aware 3-tier checking)
+    const flowSiblings = getFlowSiblings(screen as any, flowGroups);
+    const flowGroupTrees = flowSiblings.map((s) => s.node_tree);
     const unmetExpectations = checkExpectations(
       triggeredRules,
       screen.node_tree as any,
-      input.screens.map((s) => s.node_tree as any)
+      input.screens.map((s) => s.node_tree as any),
+      flowGroupTrees as any[]
     );
 
     // Step 4: Generate findings
@@ -71,6 +81,9 @@ export function runAnalysis(input: AnalysisInput): AnalysisOutput {
       findings: findingsWithComponents,
     });
   }
+
+  // Deduplicate findings within flow groups
+  deduplicateFindings(screenResults, flowGroups);
 
   // Flow-level findings
   const flowFindings = generateFlowFindings(
@@ -144,6 +157,32 @@ function mapComponentsInline(
       },
     };
   });
+}
+
+/**
+ * Deduplicates findings within flow groups: if the same rule_id
+ * produced findings on multiple screens in a group, keep only the first.
+ */
+function deduplicateFindings(
+  screenResults: ScreenResult[],
+  flowGroups: Map<string, { screen_id: string }[]>
+) {
+  for (const [, screens] of flowGroups) {
+    if (screens.length <= 1) continue;
+
+    const screenIds = new Set(screens.map((s) => s.screen_id));
+    const seenRuleIds = new Set<string>();
+
+    for (const result of screenResults) {
+      if (!screenIds.has(result.screen_id)) continue;
+
+      result.findings = result.findings.filter((f) => {
+        if (seenRuleIds.has(f.rule_id)) return false;
+        seenRuleIds.add(f.rule_id);
+        return true;
+      });
+    }
+  }
 }
 
 function countBySeverity(

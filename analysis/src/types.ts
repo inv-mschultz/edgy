@@ -13,6 +13,12 @@ export interface ExtractedNode {
   height: number;
   children: ExtractedNode[];
   textContent?: string;
+  /** Solid fill colors as [r, g, b] tuples (0-1 range). Only visible solid fills. */
+  fills?: [number, number, number][];
+  /** Solid stroke colors as [r, g, b] tuples (0-1 range). Only visible solid strokes. */
+  strokes?: [number, number, number][];
+  /** Stroke weight in pixels. Only present when strokes exist. */
+  strokeWeight?: number;
 }
 
 export interface ExtractedScreen {
@@ -138,10 +144,14 @@ export interface Rule {
   };
 }
 
+export type VisualCueType = "error" | "warning" | "success" | "info";
+
 export interface ExpectCondition {
   component_names?: string[];
   with_properties?: Record<string, string>;
   layer_name_patterns?: string[];
+  /** Visual cue types to detect via color classification (e.g., ["error"]) */
+  with_visual_cues?: VisualCueType[];
 }
 
 export interface TriggeredRule {

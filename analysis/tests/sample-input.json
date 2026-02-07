@@ -86,9 +86,106 @@
       }
     },
     {
+      "screen_id": "1:200",
+      "name": "Login - Error",
+      "order": 1,
+      "width": 390,
+      "height": 844,
+      "x": 0,
+      "y": 900,
+      "node_tree": {
+        "id": "1:200",
+        "name": "Login - Error",
+        "type": "FRAME",
+        "visible": true,
+        "x": 0,
+        "y": 900,
+        "width": 390,
+        "height": 844,
+        "children": [
+          {
+            "id": "1:201",
+            "name": "Email Input",
+            "type": "INSTANCE",
+            "componentName": "Input",
+            "componentProperties": {
+              "State": { "value": "Default" },
+              "Label": { "value": "Email" }
+            },
+            "visible": true,
+            "x": 24,
+            "y": 300,
+            "width": 342,
+            "height": 48,
+            "strokes": [[0.937, 0.267, 0.267]],
+            "strokeWeight": 2,
+            "children": []
+          },
+          {
+            "id": "1:202",
+            "name": "Error Message",
+            "type": "TEXT",
+            "textContent": "Please enter a valid email",
+            "visible": true,
+            "x": 24,
+            "y": 352,
+            "width": 342,
+            "height": 16,
+            "fills": [[0.937, 0.267, 0.267]],
+            "children": []
+          },
+          {
+            "id": "1:203",
+            "name": "Password Input",
+            "type": "INSTANCE",
+            "componentName": "Input",
+            "componentProperties": {
+              "State": { "value": "Default" },
+              "Label": { "value": "Password" }
+            },
+            "visible": true,
+            "x": 24,
+            "y": 390,
+            "width": 342,
+            "height": 48,
+            "children": []
+          },
+          {
+            "id": "1:204",
+            "name": "Sign In Button",
+            "type": "INSTANCE",
+            "componentName": "Button",
+            "componentProperties": {
+              "Variant": { "value": "Primary" },
+              "Label": { "value": "Sign In" }
+            },
+            "visible": true,
+            "x": 24,
+            "y": 460,
+            "width": 342,
+            "height": 48,
+            "children": [
+              {
+                "id": "1:205",
+                "name": "Sign In",
+                "type": "TEXT",
+                "textContent": "Sign In",
+                "visible": true,
+                "x": 150,
+                "y": 472,
+                "width": 90,
+                "height": 24,
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "screen_id": "2:100",
       "name": "Dashboard",
-      "order": 1,
+      "order": 2,
       "width": 390,
       "height": 844,
       "x": 500,

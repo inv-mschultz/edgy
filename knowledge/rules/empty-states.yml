@@ -15,13 +15,11 @@ rules:
     triggers:
       pattern_types:
         - list
-      layer_name_patterns:
-        - "(?i)(list|feed|timeline|cards|items|collection|grid)"
     expects:
       in_screen:
-        - layer_name_patterns: ["(?i)(empty|no.?items|no.?data|zero|nothing|get.?started)"]
+        - layer_name_patterns: ["(?i)(empty|no.?items|no.?data|zero|nothing|get.?started|no.?results|blank.?state|placeholder)"]
       in_flow:
-        - layer_name_patterns: ["(?i)(empty.?state|no.?items|first.?item)"]
+        - layer_name_patterns: ["(?i)(empty.?state|no.?items|first.?item|empty|blank)"]
     recommendation:
       message: >
         Add an empty state for this collection — show a friendly message
@@ -43,13 +41,12 @@ rules:
       component_names:
         - Table
         - DataTable
-      layer_name_patterns:
-        - "(?i)(table|data.?grid|data.?table)"
+        - DataGrid
     expects:
       in_screen:
-        - layer_name_patterns: ["(?i)(empty|no.?data|no.?rows|no.?results)"]
+        - layer_name_patterns: ["(?i)(empty|no.?data|no.?rows|no.?results|no.?items|blank|placeholder)"]
       in_flow:
-        - layer_name_patterns: ["(?i)(empty.?table|no.?data)"]
+        - layer_name_patterns: ["(?i)(empty.?table|no.?data|empty.?state)"]
     recommendation:
       message: >
         Add an empty state for this table — show a message in the table

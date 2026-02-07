@@ -1,5 +1,6 @@
 import React from "react";
 import type { AnalysisOutput } from "../lib/types";
+import { Sparkles, AlertTriangle } from "lucide-react";
 
 interface Props {
   results: AnalysisOutput;
@@ -14,7 +15,10 @@ export function Results({ results, onRenderToCanvas, onStartOver }: Props) {
     <div className="flex flex-col gap-4 p-4">
       {/* Summary */}
       <div>
-        <h2 className="text-lg font-semibold">Analysis Complete</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold">Analysis Complete</h2>
+          <LLMBadge results={results} />
+        </div>
         <p className="text-sm text-muted-foreground mt-1">
           Found {summary.total_findings} edge case{summary.total_findings !== 1 ? "s" : ""} across{" "}
           {summary.screens_analyzed} screen{summary.screens_analyzed !== 1 ? "s" : ""}.
@@ -89,6 +93,29 @@ export function Results({ results, onRenderToCanvas, onStartOver }: Props) {
         </button>
       </div>
     </div>
+  );
+}
+
+function LLMBadge({ results }: { results: AnalysisOutput }) {
+  if (!results.llm_enhanced && !results.llm_error) return null;
+
+  if (results.llm_enhanced) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-violet-100 text-violet-700">
+        <Sparkles className="w-3 h-3" />
+        AI-enhanced
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-yellow-100 text-yellow-700"
+      title={results.llm_error}
+    >
+      <AlertTriangle className="w-3 h-3" />
+      Heuristic only
+    </span>
   );
 }
 

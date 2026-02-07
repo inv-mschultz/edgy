@@ -13,16 +13,17 @@ rules:
       device is offline or experiencing connectivity issues.
     triggers:
       pattern_types:
-        - form
         - data-display
         - list
       layer_name_patterns:
-        - "(?i)(api|fetch|load|sync|upload|download)"
+        - "(?i)(feed|data|api|fetch|load|dashboard|timeline|stream|sync|refresh)"
     expects:
       in_screen:
-        - layer_name_patterns: ["(?i)(offline|no.?connection|network|retry|reconnect)"]
+        - layer_name_patterns: ["(?i)(offline|no.?connection|network|retry|reconnect|error.?state|connection.?lost|no.?internet|unavailable)"]
+        - with_visual_cues: ["error", "warning"]
       in_flow:
-        - layer_name_patterns: ["(?i)(offline|no.?connection|network.?error)"]
+        - layer_name_patterns: ["(?i)(offline|no.?connection|network.?error|connection.?lost|no.?internet)"]
+        - with_visual_cues: ["error"]
     recommendation:
       message: >
         Add a connectivity error state — a banner or overlay that appears

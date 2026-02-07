@@ -88,14 +88,12 @@ rules:
     triggers:
       pattern_types:
         - list
-      layer_name_patterns:
-        - "(?i)(list|grid|table|feed|items|collection|results)"
     expects:
       in_screen:
-        - layer_name_patterns: ["(?i)(pagination|load.?more|infinite|scroll|showing|of.?\\d|page)"]
+        - layer_name_patterns: ["(?i)(pagination|load.?more|infinite|scroll|showing|of.?\\d|page|virtual)"]
         - component_names: ["Pagination"]
       in_flow:
-        - layer_name_patterns: ["(?i)(pagination|page.?\\d|load.?more|single.?item)"]
+        - layer_name_patterns: ["(?i)(pagination|page.?\\d|load.?more|single.?item|few.?items)"]
     recommendation:
       message: >
         Design for quantity extremes — show how this list looks with 1 item,

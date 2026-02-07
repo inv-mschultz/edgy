@@ -2,7 +2,7 @@
  * Pattern Detector
  *
  * Walks a Figma node tree and identifies UI patterns:
- * forms, lists, buttons, data displays, etc.
+ * forms, lists, buttons, data displays, modals, navigation, etc.
  */
 
 import type { ExtractedNode, DetectedPattern, PatternType } from "./types.js";
@@ -27,6 +27,31 @@ const SEARCH_INDICATORS = ["search", "filter", "query", "find"];
 
 const DATA_DISPLAY_COMPONENTS = [
   "card", "table", "avatar", "badge", "chart", "stat", "metric",
+];
+
+const DATA_DISPLAY_LAYER_KEYWORDS = [
+  "card", "widget", "panel", "stats", "data", "info", "metric",
+  "stat", "chart", "graph", "kpi",
+];
+
+const MODAL_COMPONENTS = [
+  "dialog", "modal", "alertdialog", "alert-dialog", "sheet",
+  "drawer", "overlay", "popover", "dropdown-menu", "context-menu",
+];
+
+const MODAL_LAYER_KEYWORDS = [
+  "modal", "dialog", "popup", "overlay", "drawer", "sheet",
+  "bottom-sheet", "bottomsheet",
+];
+
+const NAV_COMPONENTS = [
+  "tabs", "tab", "navbar", "nav-bar", "sidebar", "breadcrumb",
+  "navigation", "menu", "menubar", "stepper", "step",
+];
+
+const NAV_LAYER_KEYWORDS = [
+  "nav", "tabs", "tab-bar", "tabbar", "sidebar", "breadcrumb",
+  "menu", "stepper", "navigation",
 ];
 
 export function detectPatterns(rootNode: ExtractedNode): DetectedPattern[] {
@@ -92,15 +117,43 @@ export function detectPatterns(rootNode: ExtractedNode): DetectedPattern[] {
     });
   }
 
-  // Detect search
+  // Detect modals/dialogs
+  const modals = allNodes.filter((node) => isModal(node));
+  for (const modal of modals) {
+    patterns.push({
+      type: "modal",
+      nodes: [modal],
+      confidence: modal.componentName ? "high" : "medium",
+      context: `Modal/dialog: ${modal.name}`,
+    });
+  }
+
+  // Detect navigation
+  const navNodes = allNodes.filter((node) => isNavigation(node));
+  if (navNodes.length > 0) {
+    patterns.push({
+      type: "navigation",
+      nodes: navNodes,
+      confidence: navNodes.some((n) => n.componentName) ? "high" : "medium",
+      context: `Navigation: ${navNodes.map(n => n.name).join(", ")}`,
+    });
+  }
+
+  // Detect search (check both layer name and component name)
   const searchNodes = allNodes.filter((node) =>
-    SEARCH_INDICATORS.some((kw) => node.name.toLowerCase().includes(kw))
+    SEARCH_INDICATORS.some((kw) => {
+      const nameMatch = node.name.toLowerCase().includes(kw);
+      const componentMatch = node.componentName
+        ? node.componentName.toLowerCase().includes(kw)
+        : false;
+      return nameMatch || componentMatch;
+    })
   );
   if (searchNodes.length > 0) {
     patterns.push({
       type: "search",
       nodes: searchNodes,
-      confidence: "medium",
+      confidence: searchNodes.some((n) => n.componentName) ? "high" : "medium",
       context: `Search/filter: ${searchNodes.map(n => n.name).join(", ")}`,
     });
   }
@@ -138,8 +191,15 @@ function isButton(node: ExtractedNode): boolean {
   }
 
   const lowerName = node.name.toLowerCase();
-  return BUTTON_COMPONENTS.some((name) => lowerName.includes(name)) ||
-    /\b(submit|save|send|confirm|sign.?in|log.?in|register|sign.?up)\b/i.test(node.name);
+  if (BUTTON_COMPONENTS.some((name) => lowerName.includes(name))) {
+    return true;
+  }
+
+  // Only match action keywords on leaf-ish nodes (INSTANCE, TEXT, or small FRAME),
+  // not top-level screen frames
+  if (node.type === "FRAME" && node.children.length > 2) return false;
+
+  return /\b(submit|save|send|confirm|sign.?in|log.?in|register|sign.?up|cancel|close|next|previous|back|continue|done|apply|add|create|update|edit|go|ok|accept|decline|reject)\b/i.test(node.name);
 }
 
 function isDestructiveAction(node: ExtractedNode): boolean {
@@ -164,7 +224,30 @@ function isDataDisplay(node: ExtractedNode): boolean {
       (name) => node.componentName!.toLowerCase().includes(name)
     );
   }
-  return false;
+
+  // Layer name fallback
+  const lowerName = node.name.toLowerCase();
+  return DATA_DISPLAY_LAYER_KEYWORDS.some((kw) => lowerName.includes(kw));
+}
+
+function isModal(node: ExtractedNode): boolean {
+  if (node.componentName) {
+    return MODAL_COMPONENTS.some(
+      (name) => node.componentName!.toLowerCase().includes(name)
+    );
+  }
+  const lowerName = node.name.toLowerCase();
+  return MODAL_LAYER_KEYWORDS.some((kw) => lowerName.includes(kw));
+}
+
+function isNavigation(node: ExtractedNode): boolean {
+  if (node.componentName) {
+    return NAV_COMPONENTS.some(
+      (name) => node.componentName!.toLowerCase().includes(name)
+    );
+  }
+  const lowerName = node.name.toLowerCase();
+  return NAV_LAYER_KEYWORDS.some((kw) => lowerName.includes(kw));
 }
 
 function detectLists(allNodes: ExtractedNode[], rootNode: ExtractedNode): DetectedPattern[] {

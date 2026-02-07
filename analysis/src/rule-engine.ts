@@ -49,6 +49,11 @@ export async function loadRules(knowledgeDir: string): Promise<Rule[]> {
 /**
  * Matches rules against detected patterns.
  * Returns rules whose trigger conditions are met.
+ *
+ * When a rule specifies multiple trigger types (component_names,
+ * layer_name_patterns, pattern_types), a node must satisfy ALL of
+ * them to match (AND logic). This prevents false positives like
+ * a "Read more" Button triggering a destructive-action rule.
  */
 export function matchRules(
   patterns: DetectedPattern[],
@@ -56,55 +61,78 @@ export function matchRules(
 ): TriggeredRule[] {
   const triggered: TriggeredRule[] = [];
 
+  // Collect all unique nodes across all patterns
+  const allNodes = new Map<string, ExtractedNode>();
+  for (const pattern of patterns) {
+    for (const node of pattern.nodes) {
+      allNodes.set(node.id, node);
+    }
+  }
+
+  // Reverse index: node ID → set of pattern types that contain it
+  const nodePatternTypes = new Map<string, Set<string>>();
+  for (const pattern of patterns) {
+    for (const node of pattern.nodes) {
+      if (!nodePatternTypes.has(node.id)) {
+        nodePatternTypes.set(node.id, new Set());
+      }
+      nodePatternTypes.get(node.id)!.add(pattern.type);
+    }
+  }
+
   for (const rule of rules) {
     const matchedNodes: ExtractedNode[] = [];
 
-    // Check component name triggers
-    if (rule.triggers.component_names) {
-      for (const pattern of patterns) {
-        for (const node of pattern.nodes) {
-          const nodeName = (node.componentName || node.name).toLowerCase();
-          if (
-            rule.triggers.component_names.some(
-              (name) => nodeName.includes(name.toLowerCase())
-            )
-          ) {
-            matchedNodes.push(node);
-          }
-        }
-      }
-    }
+    const hasComponentNames =
+      rule.triggers.component_names != null &&
+      rule.triggers.component_names.length > 0;
+    const hasLayerPatterns =
+      rule.triggers.layer_name_patterns != null &&
+      rule.triggers.layer_name_patterns.length > 0;
+    const hasPatternTypes =
+      rule.triggers.pattern_types != null &&
+      rule.triggers.pattern_types.length > 0;
 
-    // Check layer name pattern triggers
-    if (rule.triggers.layer_name_patterns) {
-      for (const pattern of patterns) {
-        for (const node of pattern.nodes) {
-          for (const regexStr of rule.triggers.layer_name_patterns) {
+    for (const node of allNodes.values()) {
+      // component_names: vacuously true if not specified
+      let passesComponentNames = true;
+      if (hasComponentNames) {
+        const nodeName = (node.componentName || node.name).toLowerCase();
+        passesComponentNames = rule.triggers.component_names!.some((name) =>
+          nodeName.includes(name.toLowerCase())
+        );
+      }
+
+      // layer_name_patterns: vacuously true if not specified
+      let passesLayerPatterns = true;
+      if (hasLayerPatterns) {
+        passesLayerPatterns = rule.triggers.layer_name_patterns!.some(
+          (regexStr) => {
             try {
-              const regex = new RegExp(regexStr, "i");
-              if (regex.test(node.name) || (node.textContent && regex.test(node.textContent))) {
-                if (!matchedNodes.includes(node)) {
-                  matchedNodes.push(node);
-                }
-              }
+              const regex = new RegExp(stripInlineFlags(regexStr), "i");
+              return (
+                regex.test(node.name) ||
+                (node.textContent ? regex.test(node.textContent) : false)
+              );
             } catch {
-              // Invalid regex — skip
+              return false;
             }
           }
-        }
+        );
       }
-    }
 
-    // Check pattern type triggers
-    if (rule.triggers.pattern_types) {
-      for (const pattern of patterns) {
-        if (rule.triggers.pattern_types.includes(pattern.type)) {
-          for (const node of pattern.nodes) {
-            if (!matchedNodes.includes(node)) {
-              matchedNodes.push(node);
-            }
-          }
-        }
+      // pattern_types: vacuously true if not specified
+      let passesPatternTypes = true;
+      if (hasPatternTypes) {
+        const nodeTypes = nodePatternTypes.get(node.id);
+        passesPatternTypes = nodeTypes
+          ? rule.triggers.pattern_types!.some((pt) => nodeTypes.has(pt))
+          : false;
+      }
+
+      // Node must satisfy ALL specified trigger conditions
+      if (passesComponentNames && passesLayerPatterns && passesPatternTypes) {
+        matchedNodes.push(node);
       }
     }
 
@@ -114,4 +142,13 @@ export function matchRules(
   }
 
   return triggered;
+}
+
+/**
+ * Strips inline flag prefixes like (?i) from regex strings.
+ * YAML rules use (?i) for case-insensitive matching, but JavaScript
+ * doesn't support inline flags — we pass "i" to RegExp() instead.
+ */
+function stripInlineFlags(pattern: string): string {
+  return pattern.replace(/^\(\?[gimsuy]+\)/, "");
 }
