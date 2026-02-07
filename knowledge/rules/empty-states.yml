@@ -7,6 +7,7 @@ rules:
   - id: list-empty-state
     name: List/collection has no empty state
     severity: warning
+    annotation_target: screen
     description: >
       This list or collection view has no visible empty state. Users need
       to see a clear message when there are zero items, ideally with a
@@ -34,6 +35,7 @@ rules:
   - id: table-empty-state
     name: Table/data grid has no empty state
     severity: warning
+    annotation_target: screen
     description: >
       Data tables should show a clear empty state rather than an empty
       grid with headers and no rows.
@@ -61,6 +63,7 @@ rules:
   - id: dashboard-empty
     name: Dashboard widgets have no empty/zero state
     severity: info
+    annotation_target: screen
     description: >
       Dashboard or analytics views should handle the state when there's
       no data yet (new user, no activity, fresh account).

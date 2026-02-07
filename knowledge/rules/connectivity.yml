@@ -7,6 +7,7 @@ rules:
   - id: no-offline-indicator
     name: No offline/connectivity indicator
     severity: warning
+    annotation_target: screen
     description: >
       Screens that fetch or submit data should communicate when the
       device is offline or experiencing connectivity issues.
@@ -36,6 +37,7 @@ rules:
   - id: timeout-state
     name: No timeout/slow connection handling
     severity: info
+    annotation_target: screen
     description: >
       Long-running operations should handle timeout scenarios — show a
       message if the request is taking longer than expected.
@@ -58,3 +60,60 @@ rules:
           label: "Cancel/Retry Button"
         - shadcn_id: progress
           label: "Progress Indicator"
+
+  - id: form-auto-save
+    name: Form has no auto-save or local persistence
+    severity: info
+    annotation_target: screen
+    description: >
+      Long or multi-step forms should auto-save progress locally so users
+      don't lose all their input if the connection drops, the browser crashes,
+      or they accidentally navigate away. NNG emphasises that losing form data
+      is one of the most frustrating user experiences.
+    triggers:
+      pattern_types:
+        - form
+      layer_name_patterns:
+        - "(?i)(checkout|application|registration|onboarding|wizard|multi.?step|survey|booking)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(auto.?save|saved|draft|persist|resume|recover)"]
+      in_flow:
+        - layer_name_patterns: ["(?i)(auto.?save|draft|saved|resume.?progress)"]
+    recommendation:
+      message: >
+        Add auto-save for this form — persist progress to local storage
+        so users can resume if they lose connectivity or accidentally
+        close the tab. Show a "draft saved" indicator for reassurance.
+      components:
+        - shadcn_id: badge
+          label: "Draft Saved Indicator"
+        - shadcn_id: toast
+          label: "Auto-Save Confirmation"
+
+  - id: stale-data-indicator
+    name: Data display has no freshness indicator
+    severity: info
+    annotation_target: screen
+    description: >
+      Screens that display real-time or frequently-updated data should show
+      a "last updated" timestamp or freshness indicator. When data may be
+      stale (e.g. dashboard went offline briefly), users need to know they
+      might not be seeing current information.
+    triggers:
+      layer_name_patterns:
+        - "(?i)(dashboard|analytics|monitor|live|real.?time|feed|status|metric|report)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(last.?updated|refreshed|ago|timestamp|stale|live|as.?of)"]
+    recommendation:
+      message: >
+        Add a "last updated" timestamp or freshness indicator so users
+        know how current the displayed data is. Include a manual refresh
+        option and show a stale-data warning if the data hasn't been
+        updated recently.
+      components:
+        - shadcn_id: badge
+          label: "Last Updated Badge"
+        - shadcn_id: button
+          label: "Refresh Button"

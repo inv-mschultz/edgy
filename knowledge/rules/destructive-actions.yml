@@ -7,6 +7,7 @@ rules:
   - id: delete-no-confirmation
     name: Destructive action has no confirmation dialog
     severity: critical
+    annotation_target: element
     description: >
       This destructive action (delete, remove, clear) has no visible
       confirmation step. Users might accidentally trigger it and lose data.
@@ -39,6 +40,7 @@ rules:
   - id: no-undo
     name: Destructive action has no undo option
     severity: info
+    annotation_target: element
     description: >
       After completing a destructive action, providing an undo option
       (like a toast with an undo button) adds a safety net.
@@ -59,3 +61,95 @@ rules:
         - shadcn_id: button
           variant: outline
           label: "Undo Button"
+
+  - id: vague-confirmation-label
+    name: Destructive confirmation uses vague button labels
+    severity: warning
+    annotation_target: element
+    description: >
+      Confirmation dialogs for destructive actions should use specific
+      button labels like "Delete Account" or "Remove Item" — not generic
+      labels like "Confirm", "OK", or "Yes". WCAG and NNG both recommend
+      unambiguous labels that state exactly what will happen.
+    triggers:
+      layer_name_patterns:
+        - "(?i)(confirm|are.?you.?sure|delete.?dialog|remove.?dialog)"
+      component_names:
+        - AlertDialog
+        - Alert Dialog
+        - Dialog
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(delete.+button|remove.+button|cancel.+subscription|specific.?label)"]
+    recommendation:
+      message: >
+        Use specific button labels in confirmation dialogs — "Delete Account"
+        not "Confirm", "Remove Item" not "OK". The label should clearly state
+        the destructive consequence so users know exactly what they're agreeing to.
+      components:
+        - shadcn_id: button
+          variant: destructive
+          label: "Specific Action Button"
+        - shadcn_id: alert-dialog
+          label: "Confirmation Dialog"
+
+  - id: unsaved-changes-guard
+    name: No unsaved changes warning on navigation
+    severity: warning
+    annotation_target: screen
+    description: >
+      Forms and editors with unsaved changes should warn users before
+      they navigate away or close the tab. Accidentally losing a long
+      form entry or document edits is one of the most frustrating user
+      experiences.
+    triggers:
+      pattern_types:
+        - form
+      layer_name_patterns:
+        - "(?i)(edit|form|compose|draft|editor|create|write|configure)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(unsaved|discard|leave.?page|changes.?will.?be.?lost|save.?before)"]
+      in_flow:
+        - layer_name_patterns: ["(?i)(unsaved.?changes|discard.?changes|leave.?without.?saving)"]
+    recommendation:
+      message: >
+        Add an unsaved changes guard — when users try to navigate away from
+        a form with unsaved edits, show a confirmation dialog asking if they
+        want to save, discard, or cancel navigation.
+      components:
+        - shadcn_id: alert-dialog
+          label: "Unsaved Changes Dialog"
+        - shadcn_id: button
+          label: "Save Changes Button"
+        - shadcn_id: button
+          variant: outline
+          label: "Discard Button"
+
+  - id: irreversible-submission-review
+    name: Irreversible submission has no review step
+    severity: critical
+    annotation_target: screen
+    description: >
+      Submissions with legal, financial, or data-commitment consequences
+      should include a review/summary step before final submission (WCAG
+      3.3.4 / 3.3.6). This lets users verify all information before
+      committing to an action that cannot be undone.
+    triggers:
+      layer_name_patterns:
+        - "(?i)(place.?order|submit.?payment|pay.?now|confirm.?purchase|sign.?contract|accept.?terms|finalize)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(review|summary|confirm|verify|order.?summary|preview)"]
+      in_flow:
+        - layer_name_patterns: ["(?i)(review.?step|order.?summary|confirmation.?page|preview)"]
+    recommendation:
+      message: >
+        Add a review/summary step before this irreversible submission. Per WCAG
+        3.3.4, submissions that cause legal or financial commitments must be
+        reversible, checked for errors, or confirmed via a review step.
+      components:
+        - shadcn_id: card
+          label: "Order/Submission Summary"
+        - shadcn_id: button
+          label: "Edit/Go Back Button"

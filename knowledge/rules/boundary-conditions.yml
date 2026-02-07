@@ -7,6 +7,7 @@ rules:
   - id: counter-boundaries
     name: Counter/badge has no boundary handling
     severity: info
+    annotation_target: element
     description: >
       Numeric displays like notification badges, counters, or pagination
       should handle zero, very large numbers (99+), and negative values.
@@ -29,6 +30,7 @@ rules:
   - id: pagination-boundaries
     name: Pagination has no first/last page state
     severity: warning
+    annotation_target: element
     description: >
       Pagination controls should handle the first page (no previous button)
       and last page (no next button) states.
@@ -48,3 +50,85 @@ rules:
         - shadcn_id: button
           variant: disabled
           label: "Disabled Pagination Button"
+
+  - id: file-upload-limits
+    name: File upload has no visible size/type limit
+    severity: warning
+    annotation_target: screen
+    description: >
+      File upload areas should communicate maximum file size, accepted
+      file types, and dimension constraints before the user selects a file —
+      not just reject it after upload fails.
+    triggers:
+      layer_name_patterns:
+        - "(?i)(upload|drop.?zone|file.?input|attach|import.?file|avatar|photo|image)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(max.?size|file.?size|limit|mb|gb|accept|allowed|format|type)"]
+    recommendation:
+      message: >
+        Show file upload constraints upfront — max size, accepted formats,
+        and dimension limits. Display this information in the upload area
+        before the user selects a file, not as an error after the fact.
+      components:
+        - shadcn_id: card
+          label: "Upload Drop Zone"
+        - shadcn_id: form-message
+          label: "File Constraint Hint"
+
+  - id: list-scaling
+    name: List has no handling for very few or very many items
+    severity: info
+    annotation_target: screen
+    description: >
+      Lists and grids should handle extreme quantities gracefully — a single
+      item should look intentional (not broken), and thousands of items
+      should use pagination, infinite scroll, or virtualisation to prevent
+      performance issues.
+    triggers:
+      pattern_types:
+        - list
+      layer_name_patterns:
+        - "(?i)(list|grid|table|feed|items|collection|results)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(pagination|load.?more|infinite|scroll|showing|of.?\\d|page)"]
+        - component_names: ["Pagination"]
+      in_flow:
+        - layer_name_patterns: ["(?i)(pagination|page.?\\d|load.?more|single.?item)"]
+    recommendation:
+      message: >
+        Design for quantity extremes — show how this list looks with 1 item,
+        a typical amount, and a very large dataset. Add pagination or infinite
+        scroll for large lists and ensure the single-item state isn't awkward.
+      components:
+        - shadcn_id: button
+          label: "Load More Button"
+
+  - id: date-range-validation
+    name: Date range has no invalid-range handling
+    severity: warning
+    annotation_target: element
+    description: >
+      Date range pickers should prevent or handle the case where the end
+      date is before the start date, and where both dates are the same.
+      Use constraints to prevent invalid ranges rather than just catching
+      them after submission.
+    triggers:
+      layer_name_patterns:
+        - "(?i)(date.?range|start.?date|end.?date|from.?date|to.?date|check.?in|check.?out|depart|return)"
+      component_names:
+        - DatePicker
+        - Calendar
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(invalid|error|constraint|disabled|min.?date|max.?date)"]
+    recommendation:
+      message: >
+        Add validation for date ranges — prevent end dates before start dates
+        using picker constraints (disable invalid dates), and show a clear
+        error if an invalid range is somehow entered.
+      components:
+        - shadcn_id: form-message
+          variant: destructive
+          label: "Invalid Range Message"

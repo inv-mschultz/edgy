@@ -7,6 +7,7 @@ rules:
   - id: gated-action-no-disabled
     name: Restricted action has no disabled/unauthorized state
     severity: warning
+    annotation_target: element
     description: >
       Actions that require specific permissions (admin, owner, editor)
       should show a disabled state with explanation for unauthorized users.
@@ -33,3 +34,87 @@ rules:
           label: "Permission Tooltip"
         - shadcn_id: alert
           label: "Access Denied Alert"
+
+  - id: session-expiry
+    name: No session expiry handling
+    severity: warning
+    annotation_target: screen
+    description: >
+      Authenticated flows should handle session expiry gracefully —
+      especially mid-task. If a user's session times out while filling
+      a form or during checkout, their progress should be preserved
+      and they should be guided to re-authenticate.
+    triggers:
+      pattern_types:
+        - form
+      layer_name_patterns:
+        - "(?i)(checkout|payment|account|profile|settings|order|booking)"
+    expects:
+      in_flow:
+        - layer_name_patterns: ["(?i)(session|expir|timeout|re.?auth|re.?login|sign.?in.?again|token)"]
+    recommendation:
+      message: >
+        Design a session expiry state — show a modal prompting re-authentication
+        without losing the user's current form data or progress. Preserve
+        state in local storage or session storage as a fallback.
+      components:
+        - shadcn_id: alert-dialog
+          label: "Session Expired Dialog"
+        - shadcn_id: button
+          label: "Re-authenticate Button"
+
+  - id: guest-vs-authenticated
+    name: No guest/unauthenticated experience designed
+    severity: warning
+    annotation_target: screen
+    description: >
+      Flows that can be accessed by both guests and signed-in users should
+      clearly show both paths. Baymard found 60% of testers had serious
+      trouble finding the guest checkout option when it existed.
+    triggers:
+      layer_name_patterns:
+        - "(?i)(checkout|purchase|buy|subscribe|sign.?in|log.?in|account)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(guest|continue.?without|skip|no.?account|sign.?in.?later)"]
+      in_flow:
+        - layer_name_patterns: ["(?i)(guest|unauthenticated|anonymous|sign.?up.?wall)"]
+    recommendation:
+      message: >
+        Design a clear guest path alongside the authenticated flow. Make the
+        guest option equally visible — don't bury it below sign-in. Consider
+        progressive account creation after the core task is complete.
+      components:
+        - shadcn_id: button
+          label: "Guest Checkout Button"
+        - shadcn_id: card
+          label: "Account Options Card"
+
+  - id: paywall-upgrade-path
+    name: Feature limit has no clear upgrade path
+    severity: info
+    annotation_target: screen
+    description: >
+      When users hit a feature paywall or usage limit, the UI should
+      clearly explain what's restricted and provide a direct path to
+      upgrade — not just block the action with no explanation.
+    triggers:
+      layer_name_patterns:
+        - "(?i)(upgrade|premium|pro|plan|pricing|limit|quota|usage|tier|subscription)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(upgrade|unlock|pricing|plan|subscribe|limit.?reached|quota)"]
+      in_flow:
+        - layer_name_patterns: ["(?i)(upgrade|paywall|pricing|plan.?select)"]
+    recommendation:
+      message: >
+        Add a clear upgrade prompt when the user hits a feature limit. Explain
+        what capability is restricted, why, and provide a direct CTA to the
+        upgrade or pricing page.
+      components:
+        - shadcn_id: alert
+          label: "Feature Limit Alert"
+        - shadcn_id: button
+          label: "Upgrade CTA Button"
+        - shadcn_id: card
+          label: "Pricing Comparison Card"

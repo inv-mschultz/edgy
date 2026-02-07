@@ -26,6 +26,9 @@ export async function renderFindings(
     if (!originalFrame || screenResult.findings.length === 0) continue;
 
     for (const finding of screenResult.findings) {
+      // Only annotate element-specific findings; screen-level findings go in the report only
+      if (finding.annotation_target !== "element") continue;
+
       const categoryId = categories[finding.severity];
       const label = formatAnnotationLabel(finding);
 

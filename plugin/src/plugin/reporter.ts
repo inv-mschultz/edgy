@@ -113,16 +113,75 @@ export async function generateReport(
     screenHeader.layoutAlign = "STRETCH";
     screenCard.appendChild(screenHeader);
 
-    for (const finding of screen.findings) {
+    // Separate element-specific findings (compact) from screen-level findings (detailed)
+    const elementFindings = screen.findings.filter((f) => f.annotation_target === "element");
+    const screenFindings = screen.findings.filter((f) => f.annotation_target !== "element");
+
+    // Element findings: compact bullet (they have annotations on-canvas)
+    for (const finding of elementFindings) {
       const severityColor = COLORS[finding.severity] || COLORS.info;
       const findingText = createText(
-        `• [${finding.severity.toUpperCase()}] ${finding.title}`,
+        `• [${finding.severity.toUpperCase()}] ${finding.title}  ← see annotation`,
         12,
         "Regular",
         severityColor
       );
       findingText.layoutAlign = "STRETCH";
       screenCard.appendChild(findingText);
+    }
+
+    // Screen findings: full detail (no annotation, report is the only place they appear)
+    for (const finding of screenFindings) {
+      const severityColor = COLORS[finding.severity] || COLORS.info;
+
+      const findingBlock = createAutoLayoutFrame(`Finding: ${finding.title}`, "VERTICAL", 4);
+      findingBlock.layoutAlign = "STRETCH";
+      findingBlock.paddingTop = 8;
+      findingBlock.paddingBottom = 8;
+      findingBlock.paddingLeft = 12;
+      findingBlock.paddingRight = 12;
+      findingBlock.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+      findingBlock.cornerRadius = 6;
+
+      const titleLine = createText(
+        `[${finding.severity.toUpperCase()}] ${finding.title}`,
+        13,
+        "Semi Bold",
+        severityColor
+      );
+      titleLine.layoutAlign = "STRETCH";
+      findingBlock.appendChild(titleLine);
+
+      const descText = createText(finding.description, 11, "Regular", COLORS.text);
+      descText.layoutAlign = "STRETCH";
+      findingBlock.appendChild(descText);
+
+      if (finding.recommendation.message) {
+        const recoText = createText(
+          `→ ${finding.recommendation.message}`,
+          11,
+          "Medium",
+          COLORS.accent
+        );
+        recoText.layoutAlign = "STRETCH";
+        findingBlock.appendChild(recoText);
+      }
+
+      if (finding.recommendation.components.length > 0) {
+        const componentNames = finding.recommendation.components
+          .map((c) => c.name)
+          .join(", ");
+        const compText = createText(
+          `Suggested: ${componentNames}`,
+          10,
+          "Regular",
+          COLORS.muted
+        );
+        compText.layoutAlign = "STRETCH";
+        findingBlock.appendChild(compText);
+      }
+
+      screenCard.appendChild(findingBlock);
     }
 
     breakdownSection.appendChild(screenCard);

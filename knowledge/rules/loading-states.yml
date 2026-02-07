@@ -7,6 +7,7 @@ rules:
   - id: data-loading-skeleton
     name: No loading state for data-dependent content
     severity: warning
+    annotation_target: screen
     description: >
       This screen displays data that likely comes from an API but has
       no visible loading skeleton or spinner for the initial load.
@@ -40,6 +41,7 @@ rules:
   - id: button-loading
     name: No loading state for async button action
     severity: warning
+    annotation_target: element
     description: >
       Buttons that trigger async operations (submit, save, send) should
       show a loading state to prevent double-clicks and communicate progress.
@@ -68,6 +70,7 @@ rules:
   - id: page-loading
     name: No initial page loading state
     severity: info
+    annotation_target: screen
     description: >
       Pages that fetch data on mount should show an initial loading state
       before content is available.
@@ -87,3 +90,31 @@ rules:
       components:
         - shadcn_id: skeleton
           label: "Page Skeleton"
+
+  - id: payment-processing-state
+    name: No payment processing state
+    severity: critical
+    annotation_target: screen
+    description: >
+      Payment processing is a high-anxiety moment — users need clear
+      feedback that their payment is being processed, a warning not to
+      close or navigate away, and a path to check order status if
+      something goes wrong.
+    triggers:
+      layer_name_patterns:
+        - "(?i)(pay|payment|checkout|purchase|order|buy.?now|place.?order|complete.?order)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(processing|completing|please.?wait|do.?not.?close|finalizing)"]
+      in_flow:
+        - layer_name_patterns: ["(?i)(processing|payment.?loading|order.?status|confirming)"]
+    recommendation:
+      message: >
+        Add a clear payment processing state with a progress indicator,
+        a "please don't close this page" message, and a fallback path
+        to check order status if the process takes too long or fails.
+      components:
+        - shadcn_id: progress
+          label: "Payment Progress"
+        - shadcn_id: alert
+          label: "Do Not Close Warning"

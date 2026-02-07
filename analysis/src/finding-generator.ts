@@ -41,6 +41,7 @@ export function generateFindings(
       rule_id: `${rule.category}/${rule.id}`,
       category: rule.category,
       severity: rule.severity,
+      annotation_target: rule.annotation_target,
       title: rule.name,
       description: `${rule.description} (${reason})`,
       affected_nodes: matchedNodes.map((n) => n.id),

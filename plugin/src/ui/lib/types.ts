@@ -45,6 +45,7 @@ export interface AnalysisFinding {
   rule_id: string;
   category: EdgeCaseCategory;
   severity: "critical" | "warning" | "info";
+  annotation_target?: "element" | "screen";
   title: string;
   description: string;
   affected_nodes: string[];

@@ -7,6 +7,7 @@ rules:
   - id: no-character-limit
     name: Text input has no visible character limit
     severity: info
+    annotation_target: element
     description: >
       Long-form text inputs (textareas, name fields, bio fields) should
       show a character counter or limit to prevent truncation surprises.
@@ -30,6 +31,7 @@ rules:
   - id: text-overflow
     name: Long text content may overflow
     severity: info
+    annotation_target: screen
     description: >
       Displayed text content (names, titles, descriptions) should handle
       very long values gracefully — with truncation, wrapping, or tooltips.
@@ -46,3 +48,62 @@ rules:
       components:
         - shadcn_id: tooltip
           label: "Overflow Tooltip"
+
+  - id: no-input-masking
+    name: Structured input has no format mask or hint
+    severity: warning
+    annotation_target: element
+    description: >
+      Structured data fields (phone numbers, credit cards, dates, postal codes)
+      should use input masking or format hints to guide entry. Baymard found
+      64% of sites don't use input masking for phone fields and 80% don't
+      auto-format credit card numbers with spaces.
+    triggers:
+      layer_name_patterns:
+        - "(?i)(phone|tel|card.?number|credit.?card|expir|cvv|cvc|zip|postal|date|ssn|iban)"
+      component_names:
+        - Input
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(mask|format|placeholder|hint|pattern|\\+1|###|XX\\/XX)"]
+    recommendation:
+      message: >
+        Add input masking or a format hint for this structured field. Auto-format
+        values as the user types (e.g. card numbers with spaces, phone numbers
+        with dashes). This reduces errors and speeds up entry.
+      components:
+        - shadcn_id: input
+          label: "Masked Input Field"
+        - shadcn_id: form-message
+          label: "Format Hint"
+
+  - id: special-characters-i18n
+    name: Input may not handle special characters or i18n
+    severity: info
+    annotation_target: screen
+    description: >
+      Name fields, usernames, and text inputs should handle special characters
+      gracefully — including emojis, accented letters (e.g. é, ñ, ü), apostrophes,
+      hyphens, RTL text, and Unicode characters. Rejecting valid names like
+      "O'Brien" or "José" is a common and frustrating edge case.
+    triggers:
+      layer_name_patterns:
+        - "(?i)(name|first.?name|last.?name|username|display.?name|full.?name)"
+      component_names:
+        - Input
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(i18n|unicode|special|international|locale|accent)"]
+      in_flow:
+        - layer_name_patterns: ["(?i)(international|locale|special.?char)"]
+    recommendation:
+      message: >
+        Ensure this name or text field accepts special characters including
+        apostrophes, hyphens, accented letters, and Unicode. Don't restrict
+        inputs to ASCII — real names contain characters like O'Brien, José,
+        and emoji display names.
+      components:
+        - shadcn_id: input
+          label: "Unicode-Safe Input"
+        - shadcn_id: form-message
+          label: "Input Validation Message"

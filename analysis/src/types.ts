@@ -39,6 +39,7 @@ export interface AnalysisFinding {
   rule_id: string;
   category: string;
   severity: "critical" | "warning" | "info";
+  annotation_target?: "element" | "screen";
   title: string;
   description: string;
   affected_nodes: string[];
@@ -120,6 +121,7 @@ export interface Rule {
   category: string;
   name: string;
   severity: "critical" | "warning" | "info";
+  annotation_target?: "element" | "screen";
   description: string;
   triggers: {
     component_names?: string[];

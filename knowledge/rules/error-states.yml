@@ -7,6 +7,7 @@ rules:
   - id: form-field-errors
     name: Form fields missing error states
     severity: critical
+    annotation_target: element
     description: >
       Text inputs, selects, and other form fields should show an error
       variant when validation fails, with a helpful message below.
@@ -45,6 +46,7 @@ rules:
   - id: submit-error-feedback
     name: No error handling for form submission
     severity: critical
+    annotation_target: element
     description: >
       Forms with submit actions should handle submission failures
       (server errors, network issues, validation errors).
@@ -74,6 +76,7 @@ rules:
   - id: search-no-results
     name: Search has no "no results" state
     severity: warning
+    annotation_target: screen
     description: >
       Search or filter functionality should show a clear state when no
       results match the query, guiding users on what to do next.
@@ -96,3 +99,118 @@ rules:
           label: "No Results Card"
         - shadcn_id: button
           label: "Clear Filters Button"
+
+  - id: form-data-preservation
+    name: Form data not preserved after error
+    severity: warning
+    annotation_target: screen
+    description: >
+      When a form submission fails (validation error, server error), the
+      user's entered data should be preserved so they don't have to re-type
+      everything. Baymard found 34% of sites don't retain credit card data
+      after a validation error.
+    triggers:
+      pattern_types:
+        - form
+      layer_name_patterns:
+        - "(?i)(checkout|payment|register|sign.?up|profile|order)"
+    expects:
+      in_flow:
+        - layer_name_patterns: ["(?i)(error.?state|validation|retry|error.?form|preserved|retained)"]
+    recommendation:
+      message: >
+        Ensure form data is preserved when validation or submission fails.
+        Users should never have to re-enter information they already provided,
+        especially sensitive data like payment details or long form fields.
+      components:
+        - shadcn_id: form-message
+          variant: destructive
+          label: "Inline Validation Message"
+        - shadcn_id: alert
+          variant: destructive
+          label: "Submission Error Alert"
+
+  - id: error-accessibility
+    name: Error indicators may rely on colour alone
+    severity: warning
+    annotation_target: element
+    description: >
+      Error states should use colour AND an icon AND text to communicate
+      the error — not colour alone. This is an accessibility requirement
+      (WCAG 1.4.1) since colour-blind users may miss colour-only indicators.
+    triggers:
+      component_names:
+        - Input
+        - Textarea
+        - Select
+      layer_name_patterns:
+        - "(?i)(input|field|form|text.?area|select)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(error.?icon|warning.?icon|alert.?icon|exclamation|error.?message)"]
+        - component_names: ["FormMessage", "Form Message"]
+      in_flow:
+        - layer_name_patterns: ["(?i)(error.?icon|validation.?message)"]
+    recommendation:
+      message: >
+        Ensure error states use colour, an icon, and descriptive text together —
+        not colour alone. This meets WCAG 1.4.1 and helps colour-blind users
+        identify errors clearly.
+      components:
+        - shadcn_id: form-message
+          variant: destructive
+          label: "Error Message with Icon"
+
+  - id: password-strength-feedback
+    name: No password strength indicator
+    severity: info
+    annotation_target: screen
+    description: >
+      Sign-up and password change flows should provide real-time password
+      strength feedback so users can create strong passwords without
+      guessing the requirements.
+    triggers:
+      layer_name_patterns:
+        - "(?i)(password|new.?password|create.?password|change.?password|sign.?up|register)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(strength|strong|weak|requirement|criteria|rule|meter)"]
+      in_flow:
+        - layer_name_patterns: ["(?i)(password.?strength|password.?requirement|password.?rule)"]
+    recommendation:
+      message: >
+        Add a password strength indicator that shows requirements in real time.
+        Display specific criteria (length, special characters, etc.) and
+        mark each as met or unmet as the user types.
+      components:
+        - shadcn_id: progress
+          label: "Password Strength Meter"
+        - shadcn_id: form-message
+          label: "Password Requirements List"
+
+  - id: widget-data-error
+    name: Dashboard widget has no error/retry state
+    severity: warning
+    annotation_target: screen
+    description: >
+      Individual dashboard widgets that load data from APIs should show
+      an error state with a retry option when their data source fails,
+      rather than showing stale or blank content.
+    triggers:
+      layer_name_patterns:
+        - "(?i)(widget|chart|graph|metric|stat|kpi|analytics|report)"
+    expects:
+      in_screen:
+        - layer_name_patterns: ["(?i)(error|fail|unavailable|retry|reload|refresh)"]
+      in_flow:
+        - layer_name_patterns: ["(?i)(widget.?error|data.?error|load.?fail|retry)"]
+    recommendation:
+      message: >
+        Add an error state for this widget when its data source fails. Show
+        a clear message explaining the data couldn't load and a retry button
+        to re-fetch without reloading the entire page.
+      components:
+        - shadcn_id: card
+          label: "Widget Error Card"
+        - shadcn_id: button
+          label: "Retry Button"
