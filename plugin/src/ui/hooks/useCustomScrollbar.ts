@@ -13,7 +13,8 @@ interface CustomScrollbarActions {
 }
 
 export function useCustomScrollbar(
-  scrollRef: RefObject<HTMLDivElement>
+  scrollRef: RefObject<HTMLDivElement>,
+  recalcDep?: unknown
 ): CustomScrollbarState & CustomScrollbarActions {
   const [showScrollbar, setShowScrollbar] = useState(false);
   const [thumbHeight, setThumbHeight] = useState(0);
@@ -59,6 +60,20 @@ export function useCustomScrollbar(
       resizeObserver.disconnect();
     };
   }, [scrollRef, updateScrollbar]);
+
+  // Recalculate scrollbar when dependency changes (e.g., page navigation)
+  useEffect(() => {
+    if (recalcDep !== undefined) {
+      // Reset scroll position and recalculate after a brief delay for DOM to update
+      const el = scrollRef.current;
+      if (el) {
+        el.scrollTop = 0;
+      }
+      requestAnimationFrame(() => {
+        updateScrollbar();
+      });
+    }
+  }, [recalcDep, scrollRef, updateScrollbar]);
 
   const handleThumbMouseDown = useCallback(
     (e: React.MouseEvent) => {

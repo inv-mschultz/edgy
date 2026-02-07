@@ -16,7 +16,7 @@ import { runAnalysis } from "./lib/analyze";
 import { getApiKey } from "./lib/api-key-store";
 import { reviewWithLLM } from "./lib/llm-reviewer";
 import { useCustomScrollbar } from "./hooks/useCustomScrollbar";
-import { Settings, Info as InfoIcon } from "lucide-react";
+import { Settings, Info as InfoIcon, X } from "lucide-react";
 
 type Page = "select" | "analyzing" | "results" | "settings" | "info";
 
@@ -29,9 +29,9 @@ export function App() {
   const [results, setResults] = useState<AnalysisOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Custom scrollbar
+  // Custom scrollbar - pass page as dependency to recalculate on navigation
   const scrollRef = useRef<HTMLDivElement>(null);
-  const customScrollbar = useCustomScrollbar(scrollRef);
+  const customScrollbar = useCustomScrollbar(scrollRef, page);
 
   // Resize handling
   const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
@@ -163,18 +163,49 @@ export function App() {
     <div className="flex flex-col h-screen overflow-hidden">
       {/* Navigation */}
       <nav className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b bg-background">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-bold text-primary">EDGY</span>
-          <span className="text-xs text-muted-foreground">Edge Case Analyzer</span>
-        </div>
-        <button
-          onClick={handleOpenSettings}
-          className="p-1.5 rounded border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-          style={{ borderRadius: 4 }}
-          title="Settings"
-        >
-          <Settings className="w-4 h-4" />
-        </button>
+        {page === "settings" ? (
+          <>
+            <span className="text-sm font-semibold">Settings</span>
+            <button
+              onClick={() => setPage("select")}
+              type="button"
+              className="p-1.5 rounded border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              style={{ borderRadius: 4 }}
+              title="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </>
+        ) : page === "info" ? (
+          <>
+            <span className="text-sm font-semibold">About Edgy</span>
+            <button
+              onClick={() => setPage("select")}
+              type="button"
+              className="p-1.5 rounded border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              style={{ borderRadius: 4 }}
+              title="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-primary">EDGY</span>
+              <span className="text-xs text-muted-foreground">Find missing edge cases</span>
+            </div>
+            <button
+              onClick={handleOpenSettings}
+              type="button"
+              className="p-1.5 rounded border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              style={{ borderRadius: 4 }}
+              title="Settings"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+          </>
+        )}
       </nav>
 
       {/* Error banner */}
@@ -212,16 +243,8 @@ export function App() {
               }}
             />
           )}
-          {page === "settings" && (
-            <ApiKeySettings
-              onBack={() => setPage(previousPage)}
-            />
-          )}
-          {page === "info" && (
-            <Info
-              onBack={() => setPage(previousPage)}
-            />
-          )}
+          {page === "settings" && <ApiKeySettings />}
+          {page === "info" && <Info />}
         </div>
 
         {customScrollbar.showScrollbar && (

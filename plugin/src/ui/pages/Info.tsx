@@ -1,5 +1,4 @@
 import React from "react";
-import { ArrowLeft } from "lucide-react";
 
 const EDGE_CASE_CATEGORIES = [
   {
@@ -36,26 +35,12 @@ const EDGE_CASE_CATEGORIES = [
   },
 ];
 
-export function Info({ onBack }: { onBack: () => void }) {
+export function Info() {
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <div>
-        <button
-          onClick={onBack}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary border transition-colors"
-          style={{ borderRadius: 4 }}
-        >
-          <ArrowLeft className="w-3 h-3" />
-          Back
-        </button>
-      </div>
-
-      <div>
-        <h2 className="text-lg font-semibold">About Edgy</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          Edgy analyzes your UI designs for missing edge cases, helping you catch issues before development.
-        </p>
-      </div>
+    <div className="flex flex-col gap-4 px-4 py-7">
+      <p className="text-sm text-muted-foreground">
+        Edgy analyzes your UI designs for missing edge cases, helping you catch issues before development.
+      </p>
 
       {/* Edge case categories */}
       <div className="flex flex-col gap-3">
@@ -78,7 +63,7 @@ export function Info({ onBack }: { onBack: () => void }) {
         </div>
       </div>
 
-      <div className="text-xs text-muted-foreground pt-2 border-t">
+      <div className="text-xs text-muted-foreground pt-4">
         <p>
           Edgy uses pattern detection to identify UI components and check for expected states.
           Enable AI review in Settings for improved accuracy.

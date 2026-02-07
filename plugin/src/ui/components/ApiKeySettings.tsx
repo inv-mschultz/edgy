@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { getApiKey, setApiKey, clearApiKey } from "../lib/api-key-store";
-import { Key, Trash2, Check, AlertCircle, ArrowLeft, Eraser } from "lucide-react";
+import { Key, Trash2, Check, AlertCircle, Eraser } from "lucide-react";
 
-export function ApiKeySettings({ onBack }: { onBack: () => void }) {
+export function ApiKeySettings() {
   const [key, setKey] = useState("");
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -82,24 +82,10 @@ export function ApiKeySettings({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <div>
-        <button
-          onClick={onBack}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary border transition-colors"
-          style={{ borderRadius: 4 }}
-        >
-          <ArrowLeft className="w-3 h-3" />
-          Back
-        </button>
-      </div>
-
-      <div>
-        <h2 className="text-lg font-semibold">Settings</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          Configure AI-powered review to reduce false positives and improve finding descriptions.
-        </p>
-      </div>
+    <div className="flex flex-col gap-4 px-4 py-7">
+      <p className="text-sm text-muted-foreground">
+        Configure AI-powered review to reduce false positives and improve finding descriptions.
+      </p>
 
       <div className="rounded-lg border p-4 flex flex-col gap-3">
         <div className="flex items-center gap-2">
@@ -109,14 +95,15 @@ export function ApiKeySettings({ onBack }: { onBack: () => void }) {
 
         {savedKey ? (
           <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <code className="text-xs bg-secondary px-2 py-1 rounded">
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-xs bg-secondary px-2 py-1 rounded overflow-hidden text-ellipsis">
                 {maskKey(savedKey)}
               </code>
               <button
                 onClick={handleRemove}
                 disabled={saving}
-                className="flex items-center gap-1 text-xs text-destructive hover:text-destructive/80 disabled:opacity-50"
+                className="flex-shrink-0 flex items-center gap-1 px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50 transition-colors"
+                style={{ borderRadius: 4 }}
               >
                 <Trash2 className="w-3 h-3" />
                 Remove
