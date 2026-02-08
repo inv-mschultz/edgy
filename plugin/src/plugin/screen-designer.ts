@@ -36,8 +36,17 @@ interface RGB {
 }
 
 /**
+ * A color value with optional variable binding for Figma variable support.
+ */
+export interface BoundColor {
+  color: RGB;
+  variableId?: string; // Figma variable ID for binding
+}
+
+/**
  * Semantic color tokens for design system.
  * All colors are optional - defaults will be used if not provided.
+ * Colors can include variable IDs for proper Figma variable binding.
  */
 export interface SemanticColorTokens {
   primary?: RGB;
@@ -61,6 +70,32 @@ export interface SemanticColorTokens {
   successForeground?: RGB;
 }
 
+/**
+ * Variable bindings for semantic colors.
+ * Maps color role names to Figma variable IDs.
+ */
+export interface VariableBindings {
+  primary?: string;
+  primaryForeground?: string;
+  secondary?: string;
+  secondaryForeground?: string;
+  destructive?: string;
+  destructiveForeground?: string;
+  muted?: string;
+  mutedForeground?: string;
+  accent?: string;
+  accentForeground?: string;
+  background?: string;
+  foreground?: string;
+  card?: string;
+  cardForeground?: string;
+  border?: string;
+  input?: string;
+  ring?: string;
+  success?: string;
+  successForeground?: string;
+}
+
 export interface DesignTokens {
   // Legacy fields (for backward compatibility)
   primaryColor: RGB;
@@ -75,6 +110,8 @@ export interface DesignTokens {
   headingFontSize: number;
   // New semantic colors (optional)
   semanticColors?: SemanticColorTokens;
+  // Variable bindings for Figma variable support
+  variableBindings?: VariableBindings;
 }
 
 // --- Default Colors (shadcn/ui design system) ---
@@ -97,11 +134,76 @@ const DEFAULT_COLORS = {
 // Active colors (can be overridden by design tokens)
 let COLORS = { ...DEFAULT_COLORS };
 
+// Active variable bindings (Figma variable IDs for each color role)
+let VARIABLE_BINDINGS: VariableBindings = {};
+
 // Active design settings
 let BORDER_RADIUS = 8;
 let FONT_FAMILY = "Inter";
 let BASE_FONT_SIZE = 14;
 let HEADING_FONT_SIZE = 24;
+
+/**
+ * Apply a solid fill to a node, binding to a Figma variable if available.
+ */
+async function applyBoundFill(
+  node: GeometryMixin & SceneNode,
+  colorKey: keyof typeof COLORS
+): Promise<void> {
+  const color = COLORS[colorKey];
+  const variableId = VARIABLE_BINDINGS[colorKey as keyof VariableBindings];
+
+  // Create the base fill
+  const fill: SolidPaint = { type: "SOLID", color };
+  node.fills = [fill];
+
+  // Try to bind to variable if available
+  if (variableId) {
+    try {
+      const variable = await figma.variables.getVariableByIdAsync(variableId);
+      if (variable) {
+        const fillsCopy = [...(node.fills as SolidPaint[])];
+        fillsCopy[0] = figma.variables.setBoundVariableForPaint(fillsCopy[0], "color", variable);
+        node.fills = fillsCopy;
+      }
+    } catch (e) {
+      // Variable binding failed, RGB fill already applied
+      console.warn(`[edgy] Failed to bind variable ${variableId}:`, e);
+    }
+  }
+}
+
+/**
+ * Apply a solid stroke to a node, binding to a Figma variable if available.
+ */
+async function applyBoundStroke(
+  node: GeometryMixin & MinimalStrokesMixin & SceneNode,
+  colorKey: keyof typeof COLORS,
+  weight: number = 1
+): Promise<void> {
+  const color = COLORS[colorKey];
+  const variableId = VARIABLE_BINDINGS[colorKey as keyof VariableBindings];
+
+  // Create the base stroke
+  const stroke: SolidPaint = { type: "SOLID", color };
+  node.strokes = [stroke];
+  node.strokeWeight = weight;
+
+  // Try to bind to variable if available
+  if (variableId) {
+    try {
+      const variable = await figma.variables.getVariableByIdAsync(variableId);
+      if (variable) {
+        const strokesCopy = [...(node.strokes as SolidPaint[])];
+        strokesCopy[0] = figma.variables.setBoundVariableForPaint(strokesCopy[0], "color", variable);
+        node.strokes = strokesCopy;
+      }
+    } catch (e) {
+      // Variable binding failed, RGB stroke already applied
+      console.warn(`[edgy] Failed to bind stroke variable ${variableId}:`, e);
+    }
+  }
+}
 
 /**
  * Apply design tokens to override default styling.
@@ -111,6 +213,7 @@ function applyDesignTokens(tokens?: DesignTokens): void {
   if (!tokens) {
     // Reset to defaults
     COLORS = { ...DEFAULT_COLORS };
+    VARIABLE_BINDINGS = {};
     BORDER_RADIUS = 8;
     FONT_FAMILY = "Inter";
     BASE_FONT_SIZE = 14;
@@ -144,6 +247,9 @@ function applyDesignTokens(tokens?: DesignTokens): void {
     success: sanitizeColor(sem?.success ?? DEFAULT_COLORS.success),
     successBg: sanitizeColor(sem?.successForeground ?? DEFAULT_COLORS.successBg),
   };
+
+  // Store variable bindings for use when creating nodes
+  VARIABLE_BINDINGS = tokens.variableBindings || {};
 
   BORDER_RADIUS = tokens.borderRadius;
   FONT_FAMILY = tokens.fontFamily;

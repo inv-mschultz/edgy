@@ -747,6 +747,8 @@ function formatFlowName(flowType: string): string {
 export async function extractDesignTokens(referenceScreens: FrameNode[]): Promise<DesignTokens> {
   // Initialize semantic colors object to collect all color roles
   const semanticColors: DesignTokens["semanticColors"] = {};
+  // Initialize variable bindings to store Figma variable IDs
+  const variableBindings: DesignTokens["variableBindings"] = {};
 
   const tokens: DesignTokens = {
     primaryColor: { r: 0.09, g: 0.09, b: 0.09 },
@@ -759,77 +761,97 @@ export async function extractDesignTokens(referenceScreens: FrameNode[]): Promis
     baseFontSize: 14,
     headingFontSize: 24,
     semanticColors,
+    variableBindings,
   };
 
-  // Helper to match semantic color names
-  const matchSemanticColor = (nameLower: string, color: RGB): void => {
+  // Helper to match semantic color names and optionally store variable ID
+  const matchSemanticColor = (nameLower: string, color: RGB, variableId?: string): void => {
     // Primary colors
     if ((nameLower.includes("primary") && nameLower.includes("foreground")) ||
         nameLower === "primary-foreground" || nameLower.endsWith("/primary-foreground")) {
       semanticColors.primaryForeground = color;
+      if (variableId) variableBindings.primaryForeground = variableId;
     } else if (nameLower.includes("primary") || nameLower.includes("brand")) {
       tokens.primaryColor = color;
       semanticColors.primary = color;
+      if (variableId) variableBindings.primary = variableId;
     }
     // Secondary colors
     else if ((nameLower.includes("secondary") && nameLower.includes("foreground")) ||
              nameLower === "secondary-foreground") {
       semanticColors.secondaryForeground = color;
+      if (variableId) variableBindings.secondaryForeground = variableId;
     } else if (nameLower.includes("secondary")) {
       semanticColors.secondary = color;
+      if (variableId) variableBindings.secondary = variableId;
     }
     // Destructive colors
     else if ((nameLower.includes("destructive") && nameLower.includes("foreground")) ||
              nameLower === "destructive-foreground") {
       semanticColors.destructiveForeground = color;
+      if (variableId) variableBindings.destructiveForeground = variableId;
     } else if (nameLower.includes("destructive") || nameLower.includes("danger") || nameLower.includes("error")) {
       semanticColors.destructive = color;
+      if (variableId) variableBindings.destructive = variableId;
     }
     // Muted colors
     else if ((nameLower.includes("muted") && nameLower.includes("foreground")) ||
              nameLower === "muted-foreground") {
       tokens.mutedColor = color;
       semanticColors.mutedForeground = color;
+      if (variableId) variableBindings.mutedForeground = variableId;
     } else if (nameLower.includes("muted")) {
       semanticColors.muted = color;
+      if (variableId) variableBindings.muted = variableId;
     }
     // Accent colors
     else if ((nameLower.includes("accent") && nameLower.includes("foreground")) ||
              nameLower === "accent-foreground") {
       semanticColors.accentForeground = color;
+      if (variableId) variableBindings.accentForeground = variableId;
     } else if (nameLower.includes("accent")) {
       semanticColors.accent = color;
+      if (variableId) variableBindings.accent = variableId;
     }
     // Card colors
     else if ((nameLower.includes("card") && nameLower.includes("foreground")) ||
              nameLower === "card-foreground") {
       semanticColors.cardForeground = color;
+      if (variableId) variableBindings.cardForeground = variableId;
     } else if (nameLower.includes("card")) {
       semanticColors.card = color;
+      if (variableId) variableBindings.card = variableId;
     }
     // Background and foreground
     else if (nameLower.includes("background") || nameLower.includes("bg") || nameLower === "surface") {
       tokens.backgroundColor = color;
       semanticColors.background = color;
+      if (variableId) variableBindings.background = variableId;
     } else if (nameLower.includes("foreground") || nameLower === "text") {
       tokens.textColor = color;
       semanticColors.foreground = color;
+      if (variableId) variableBindings.foreground = variableId;
     }
     // Border and input
     else if (nameLower.includes("border") || nameLower.includes("stroke")) {
       tokens.borderColor = color;
       semanticColors.border = color;
+      if (variableId) variableBindings.border = variableId;
     } else if (nameLower.includes("input")) {
       semanticColors.input = color;
+      if (variableId) variableBindings.input = variableId;
     } else if (nameLower.includes("ring") || nameLower.includes("focus")) {
       semanticColors.ring = color;
+      if (variableId) variableBindings.ring = variableId;
     }
     // Success colors
     else if ((nameLower.includes("success") && nameLower.includes("foreground")) ||
              nameLower === "success-foreground") {
       semanticColors.successForeground = color;
+      if (variableId) variableBindings.successForeground = variableId;
     } else if (nameLower.includes("success")) {
       semanticColors.success = color;
+      if (variableId) variableBindings.success = variableId;
     }
   };
 
@@ -926,7 +948,8 @@ export async function extractDesignTokens(referenceScreens: FrameNode[]): Promis
             const resolvedValue = await resolveVariableValue(rawValue, variable.resolvedType, modeId);
 
             if (variable.resolvedType === "COLOR" && resolvedValue && typeof resolvedValue === "object" && "r" in resolvedValue) {
-              matchSemanticColor(nameLower, resolvedValue);
+              // Pass the variable ID so we can bind to it later
+              matchSemanticColor(nameLower, resolvedValue, variableId);
             } else if (variable.resolvedType === "FLOAT" && typeof resolvedValue === "number") {
               if (nameLower.includes("radius") || nameLower.includes("corner")) {
                 // Cap at 32px to avoid pill-shaped frames
@@ -1001,6 +1024,12 @@ export async function extractDesignTokens(referenceScreens: FrameNode[]): Promis
     if (tokens.borderRadius === 8 && analyzed.borderRadius) {
       tokens.borderRadius = Math.min(analyzed.borderRadius, 32); // Cap to avoid pill shapes
     }
+  }
+
+  // Log extracted variable bindings
+  const bindingCount = Object.keys(variableBindings).length;
+  if (bindingCount > 0) {
+    console.log(`[edgy] Mapped ${bindingCount} Figma variables:`, Object.keys(variableBindings).join(", "));
   }
 
   return tokens;
