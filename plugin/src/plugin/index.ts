@@ -4,6 +4,7 @@ import { extractScreens } from "./extractor";
 import {
   renderHealthIndicator,
   generateFindingsReport,
+  generatePlaceholderFrames,
   clearAllFindings,
   clearAllCanvasDocumentation,
   findFrameById,
@@ -87,6 +88,7 @@ figma.ui.onmessage = async (msg: UIMessage) => {
     case "save-findings": {
       try {
         const results: AnalysisOutput = msg.results;
+        const includePlaceholders = msg.includePlaceholders ?? false;
 
         // Collect frames for each screen
         const frames: FrameNode[] = [];
@@ -122,6 +124,20 @@ figma.ui.onmessage = async (msg: UIMessage) => {
 
         // Generate findings report frame
         await generateFindingsReport(results, frames);
+
+        // Generate placeholder frames for missing screens if requested
+        if (includePlaceholders && results.missing_screen_findings?.length > 0) {
+          const placeholders = await generatePlaceholderFrames(
+            results.missing_screen_findings,
+            frames
+          );
+
+          // Select the new placeholder frames to show the user
+          if (placeholders.length > 0) {
+            figma.currentPage.selection = placeholders;
+            figma.viewport.scrollAndZoomIntoView(placeholders);
+          }
+        }
 
         // Reposition any existing badges to ensure correct placement
         repositionAllBadges();

@@ -1,0 +1,109 @@
+name: Checkout Flow
+description: >
+  E-commerce checkout flows should guide users through cart review,
+  shipping, payment, and order confirmation with proper error handling.
+
+flow_type: checkout
+
+triggers:
+  any_of:
+    - layer_name_patterns: ["(?i)(checkout|cart|basket)"]
+    - layer_name_patterns: ["(?i)(payment|pay.?now|credit.?card)"]
+    - layer_name_patterns: ["(?i)(shipping|delivery|address)"]
+      with_patterns: ["form"]
+    - layer_name_patterns: ["(?i)(order|purchase)"]
+
+expected_screens:
+  - id: cart
+    name: "Cart / Basket"
+    description: "Shopping cart with item list, quantities, and totals"
+    required: true
+    severity: critical
+    detection:
+      layer_name_patterns: ["(?i)(cart|basket|bag)"]
+    components:
+      - shadcn_id: card
+        label: "Cart Item Card"
+      - shadcn_id: button
+        label: "Quantity Controls"
+      - shadcn_id: separator
+        label: "Totals Divider"
+      - shadcn_id: button
+        label: "Checkout Button"
+
+  - id: shipping
+    name: "Shipping / Delivery"
+    description: "Shipping address entry and delivery method selection"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(shipping|delivery|address)"]
+    components:
+      - shadcn_id: form
+        label: "Address Form"
+      - shadcn_id: input
+        label: "Address Inputs"
+      - shadcn_id: radio-group
+        label: "Shipping Method Selection"
+
+  - id: payment
+    name: "Payment"
+    description: "Payment method selection and card details entry"
+    required: true
+    severity: critical
+    detection:
+      layer_name_patterns: ["(?i)(payment|billing|card.?details)"]
+    components:
+      - shadcn_id: input
+        label: "Card Number Input"
+      - shadcn_id: input
+        label: "Expiry/CVV Inputs"
+      - shadcn_id: radio-group
+        label: "Payment Method Selection"
+
+  - id: order-review
+    name: "Order Review"
+    description: "Final review before placing order (WCAG 3.3.4 requirement)"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(review|summary|confirm.?order)"]
+    components:
+      - shadcn_id: card
+        label: "Order Summary Card"
+      - shadcn_id: button
+        label: "Edit Buttons"
+      - shadcn_id: button
+        label: "Place Order Button"
+
+  - id: order-confirmation
+    name: "Order Confirmation"
+    description: "Success state with order number and next steps"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(confirmation|thank.?you|order.?placed|success)"]
+    components:
+      - shadcn_id: card
+        label: "Confirmation Card"
+      - shadcn_id: badge
+        label: "Order Number Badge"
+      - shadcn_id: button
+        label: "Continue Shopping Button"
+
+  - id: payment-failed
+    name: "Payment Failed"
+    description: "Error state when payment is declined or fails"
+    required: false
+    severity: info
+    detection:
+      layer_name_patterns: ["(?i)(payment.?failed|declined|error|retry)"]
+    components:
+      - shadcn_id: alert
+        variant: destructive
+        label: "Error Alert"
+      - shadcn_id: button
+        label: "Try Again Button"
+      - shadcn_id: button
+        variant: outline
+        label: "Use Different Card Button"

@@ -1,0 +1,112 @@
+name: CRUD Flow
+description: >
+  Create, Read, Update, Delete flows should provide complete data
+  management with proper list views, forms, and confirmation states.
+
+flow_type: crud
+
+triggers:
+  any_of:
+    - layer_name_patterns: ["(?i)(list|table|grid).*(item|record|entry)"]
+      with_patterns: ["list"]
+    - layer_name_patterns: ["(?i)(create|add|new).*(item|record|entry)"]
+    - layer_name_patterns: ["(?i)(edit|update|modify)"]
+      with_patterns: ["form"]
+    - layer_name_patterns: ["(?i)(delete|remove)"]
+      with_patterns: ["destructive-action"]
+
+expected_screens:
+  - id: list
+    name: "List View"
+    description: "Main list/table view showing all items with actions"
+    required: true
+    severity: critical
+    detection:
+      layer_name_patterns: ["(?i)(list|table|all|index|overview)"]
+    components:
+      - shadcn_id: table
+        label: "Data Table"
+      - shadcn_id: button
+        label: "Add New Button"
+      - shadcn_id: input
+        label: "Search Input"
+      - shadcn_id: dropdown-menu
+        label: "Actions Menu"
+
+  - id: detail
+    name: "Detail View"
+    description: "Detailed view of a single item"
+    required: false
+    severity: info
+    detection:
+      layer_name_patterns: ["(?i)(detail|view|show|single)"]
+    components:
+      - shadcn_id: card
+        label: "Detail Card"
+      - shadcn_id: button
+        label: "Edit Button"
+      - shadcn_id: button
+        variant: destructive
+        label: "Delete Button"
+
+  - id: create
+    name: "Create / Add"
+    description: "Form for creating new items"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(create|add|new)"]
+    components:
+      - shadcn_id: form
+        label: "Create Form"
+      - shadcn_id: button
+        label: "Save Button"
+      - shadcn_id: button
+        variant: outline
+        label: "Cancel Button"
+
+  - id: edit
+    name: "Edit / Update"
+    description: "Form for editing existing items"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(edit|update|modify)"]
+    components:
+      - shadcn_id: form
+        label: "Edit Form"
+      - shadcn_id: button
+        label: "Save Changes Button"
+      - shadcn_id: button
+        variant: outline
+        label: "Cancel Button"
+
+  - id: delete-confirmation
+    name: "Delete Confirmation"
+    description: "Confirmation dialog before deletion"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(confirm.?delete|are.?you.?sure)"]
+    components:
+      - shadcn_id: alert-dialog
+        label: "Delete Confirmation Dialog"
+      - shadcn_id: button
+        variant: destructive
+        label: "Confirm Delete Button"
+      - shadcn_id: button
+        variant: outline
+        label: "Cancel Button"
+
+  - id: empty-state
+    name: "Empty State"
+    description: "State shown when no items exist"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(empty|no.?items|no.?data|nothing|zero)"]
+    components:
+      - shadcn_id: card
+        label: "Empty State Card"
+      - shadcn_id: button
+        label: "Create First Item Button"

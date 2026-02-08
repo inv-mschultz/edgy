@@ -1,0 +1,89 @@
+name: Onboarding Flow
+description: >
+  Onboarding flows should welcome new users and guide them through
+  initial setup with clear progress indication and skip options.
+
+flow_type: onboarding
+
+triggers:
+  any_of:
+    - layer_name_patterns: ["(?i)(welcome|get.?started|onboarding)"]
+    - layer_name_patterns: ["(?i)(step.?[0-9]|setup|tour)"]
+    - component_names: ["Stepper", "Step"]
+    - layer_name_patterns: ["(?i)(first.?time|new.?user)"]
+
+expected_screens:
+  - id: welcome
+    name: "Welcome"
+    description: "Initial welcome screen introducing the product"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(welcome|hello|hi|intro)"]
+    components:
+      - shadcn_id: card
+        label: "Welcome Card"
+      - shadcn_id: button
+        label: "Get Started Button"
+      - shadcn_id: button
+        variant: ghost
+        label: "Skip Button"
+
+  - id: profile-setup
+    name: "Profile Setup"
+    description: "Basic profile information collection"
+    required: false
+    severity: info
+    detection:
+      layer_name_patterns: ["(?i)(profile|about.?you|tell.?us)"]
+    components:
+      - shadcn_id: avatar
+        label: "Avatar Upload"
+      - shadcn_id: input
+        label: "Name Input"
+      - shadcn_id: textarea
+        label: "Bio Textarea"
+
+  - id: preferences
+    name: "Preferences"
+    description: "Initial settings and preferences selection"
+    required: false
+    severity: info
+    detection:
+      layer_name_patterns: ["(?i)(preferences|settings|customize)"]
+    components:
+      - shadcn_id: switch
+        label: "Preference Toggles"
+      - shadcn_id: select
+        label: "Option Selects"
+      - shadcn_id: checkbox
+        label: "Feature Checkboxes"
+
+  - id: completion
+    name: "Completion"
+    description: "Onboarding complete with next steps"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(complete|done|ready|all.?set|congrat)"]
+    components:
+      - shadcn_id: card
+        label: "Success Card"
+      - shadcn_id: button
+        label: "Start Using App Button"
+
+  - id: skip-confirmation
+    name: "Skip Confirmation"
+    description: "Confirmation when user wants to skip onboarding"
+    required: false
+    severity: info
+    detection:
+      layer_name_patterns: ["(?i)(skip|later|not.?now)"]
+    components:
+      - shadcn_id: alert-dialog
+        label: "Skip Confirmation Dialog"
+      - shadcn_id: button
+        label: "Skip Anyway Button"
+      - shadcn_id: button
+        variant: outline
+        label: "Continue Setup Button"

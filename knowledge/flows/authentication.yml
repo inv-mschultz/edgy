@@ -1,0 +1,115 @@
+name: Authentication Flow
+description: >
+  User authentication flows should handle login, registration, password
+  recovery, and verification to provide a complete auth experience.
+
+flow_type: authentication
+
+triggers:
+  any_of:
+    - layer_name_patterns: ["(?i)(sign.?in|log.?in|login)"]
+    - layer_name_patterns: ["(?i)(password|email).*(input|field)"]
+      with_patterns: ["form-field"]
+    - layer_name_patterns: ["(?i)(register|sign.?up|create.?account)"]
+    - component_names: ["Input"]
+      layer_name_patterns: ["(?i)password"]
+
+expected_screens:
+  - id: login
+    name: "Login"
+    description: "Primary sign-in screen with email/password or SSO options"
+    required: true
+    severity: critical
+    detection:
+      layer_name_patterns: ["(?i)(sign.?in|log.?in|login)"]
+    components:
+      - shadcn_id: input
+        label: "Email Input"
+      - shadcn_id: input
+        variant: password
+        label: "Password Input"
+      - shadcn_id: button
+        label: "Sign In Button"
+      - shadcn_id: separator
+        label: "SSO Divider"
+
+  - id: register
+    name: "Register / Sign Up"
+    description: "Account creation with form validation and terms acceptance"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(register|sign.?up|create.?account)"]
+    components:
+      - shadcn_id: form
+        label: "Registration Form"
+      - shadcn_id: input
+        label: "Name Input"
+      - shadcn_id: input
+        label: "Email Input"
+      - shadcn_id: input
+        variant: password
+        label: "Password Input"
+      - shadcn_id: checkbox
+        label: "Terms Checkbox"
+
+  - id: forgot-password
+    name: "Forgot Password"
+    description: "Password recovery initiation - email entry to receive reset link"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(forgot|reset|recover).*(password)"]
+    components:
+      - shadcn_id: card
+        label: "Recovery Card"
+      - shadcn_id: input
+        label: "Email Input"
+      - shadcn_id: button
+        label: "Send Reset Link Button"
+
+  - id: reset-password
+    name: "Reset Password"
+    description: "New password entry after clicking reset link"
+    required: false
+    severity: info
+    detection:
+      layer_name_patterns: ["(?i)(reset|new|change|set).*(password)"]
+    components:
+      - shadcn_id: input
+        variant: password
+        label: "New Password Input"
+      - shadcn_id: input
+        variant: password
+        label: "Confirm Password Input"
+      - shadcn_id: progress
+        label: "Password Strength Meter"
+
+  - id: email-verification
+    name: "Email Verification"
+    description: "Email confirmation pending/success states after registration"
+    required: false
+    severity: info
+    detection:
+      layer_name_patterns: ["(?i)(verify|confirm|check).*(email|inbox)"]
+    components:
+      - shadcn_id: card
+        label: "Verification Pending Card"
+      - shadcn_id: button
+        label: "Resend Email Button"
+
+  - id: mfa
+    name: "Multi-Factor Authentication"
+    description: "2FA/MFA code entry for additional security"
+    required: false
+    severity: info
+    detection:
+      layer_name_patterns: ["(?i)(2fa|mfa|two.?factor|verification.?code|otp|authenticator)"]
+    components:
+      - shadcn_id: input-otp
+        label: "OTP Input"
+      - shadcn_id: button
+        label: "Verify Button"
+      - shadcn_id: button
+        variant: link
+        label: "Use Backup Code Link"

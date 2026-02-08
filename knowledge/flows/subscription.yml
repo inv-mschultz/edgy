@@ -1,0 +1,106 @@
+name: Subscription Flow
+description: >
+  Subscription flows should guide users through plan selection,
+  payment, and provide clear management and cancellation options.
+
+flow_type: subscription
+
+triggers:
+  any_of:
+    - layer_name_patterns: ["(?i)(pricing|plans|subscription)"]
+    - layer_name_patterns: ["(?i)(upgrade|downgrade|premium|pro)"]
+    - layer_name_patterns: ["(?i)(billing|plan).*(select|choose)"]
+
+expected_screens:
+  - id: pricing
+    name: "Pricing / Plans"
+    description: "Plan comparison with features and pricing"
+    required: true
+    severity: critical
+    detection:
+      layer_name_patterns: ["(?i)(pricing|plans|compare)"]
+    components:
+      - shadcn_id: card
+        label: "Plan Cards"
+      - shadcn_id: badge
+        label: "Popular/Recommended Badge"
+      - shadcn_id: button
+        label: "Select Plan Buttons"
+      - shadcn_id: tabs
+        label: "Monthly/Yearly Toggle"
+
+  - id: checkout
+    name: "Subscription Checkout"
+    description: "Payment details for subscription purchase"
+    required: true
+    severity: critical
+    detection:
+      layer_name_patterns: ["(?i)(checkout|payment|subscribe)"]
+    components:
+      - shadcn_id: card
+        label: "Order Summary"
+      - shadcn_id: input
+        label: "Payment Inputs"
+      - shadcn_id: button
+        label: "Subscribe Button"
+
+  - id: confirmation
+    name: "Subscription Confirmed"
+    description: "Success state after subscription purchase"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(confirm|success|thank|welcome)"]
+    components:
+      - shadcn_id: card
+        label: "Confirmation Card"
+      - shadcn_id: button
+        label: "Get Started Button"
+
+  - id: manage
+    name: "Manage Subscription"
+    description: "Current plan details and management options"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(manage|current|my.?plan)"]
+    components:
+      - shadcn_id: card
+        label: "Current Plan Card"
+      - shadcn_id: button
+        label: "Change Plan Button"
+      - shadcn_id: button
+        variant: outline
+        label: "Cancel Subscription Button"
+
+  - id: cancel
+    name: "Cancel Subscription"
+    description: "Cancellation flow with confirmation and feedback"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(cancel|unsubscribe)"]
+    components:
+      - shadcn_id: alert-dialog
+        label: "Cancel Confirmation"
+      - shadcn_id: radio-group
+        label: "Cancellation Reason"
+      - shadcn_id: button
+        variant: destructive
+        label: "Confirm Cancel Button"
+      - shadcn_id: button
+        variant: outline
+        label: "Keep Subscription Button"
+
+  - id: reactivate
+    name: "Reactivate Subscription"
+    description: "Option to restore a cancelled subscription"
+    required: false
+    severity: info
+    detection:
+      layer_name_patterns: ["(?i)(reactivate|restore|renew)"]
+    components:
+      - shadcn_id: card
+        label: "Reactivate Card"
+      - shadcn_id: button
+        label: "Reactivate Button"

@@ -4,7 +4,7 @@
  * Creates and manages health indicator badges on analyzed screens.
  */
 
-import type { AnalysisFinding, AnalysisOutput, ScreenResult } from "../ui/lib/types";
+import type { AnalysisFinding, AnalysisOutput, ScreenResult, MissingScreenFinding } from "../ui/lib/types";
 
 // --- Types ---
 
@@ -311,6 +311,40 @@ export async function generateFindingsReport(
     }
   }
 
+  // Missing screen findings
+  if (results.missing_screen_findings?.length > 0) {
+    const missingSection = figma.createFrame();
+    missingSection.name = "missing-screens";
+    missingSection.layoutMode = "VERTICAL";
+    missingSection.primaryAxisSizingMode = "AUTO";
+    missingSection.itemSpacing = 12;
+    missingSection.fills = [];
+
+    // Add section to report and set stretch BEFORE adding children
+    report.appendChild(missingSection);
+    missingSection.layoutAlign = "STRETCH";
+
+    const missingTitle = figma.createText();
+    missingTitle.fontName = { family: "Inter", style: "Semi Bold" };
+    missingTitle.fontSize = 11;
+    missingTitle.characters = "MISSING SCREENS";
+    missingTitle.fills = [{ type: "SOLID", color: COLORS.mutedForeground }];
+    missingSection.appendChild(missingTitle);
+
+    // Add findings AFTER section is stretched
+    for (const finding of results.missing_screen_findings) {
+      const item = createFindingItem({
+        severity: finding.severity,
+        title: finding.missing_screen.name,
+        description: `${finding.flow_name}: ${finding.missing_screen.description}`,
+      });
+      missingSection.appendChild(item);
+      // Use newer sizing properties: FILL width, HUG height
+      item.layoutSizingHorizontal = "FILL";
+      item.layoutSizingVertical = "HUG";
+    }
+  }
+
   // Add to page
   figma.currentPage.appendChild(report);
 
@@ -588,4 +622,219 @@ interface RGB {
   r: number;
   g: number;
   b: number;
+}
+
+// --- Placeholder Frame Generation ---
+
+/**
+ * Generates placeholder frames for missing screens.
+ */
+export async function generatePlaceholderFrames(
+  findings: MissingScreenFinding[],
+  referenceScreens: FrameNode[]
+): Promise<FrameNode[]> {
+  await ensureFontsLoaded();
+
+  const placeholders: FrameNode[] = [];
+
+  if (findings.length === 0 || referenceScreens.length === 0) {
+    return placeholders;
+  }
+
+  // Find rightmost screen to position section after
+  const rightmostX = Math.max(...referenceScreens.map((s) => s.x + s.width));
+  const topY = Math.min(...referenceScreens.map((s) => s.y));
+
+  // Use first screen dimensions as template
+  const templateWidth = referenceScreens[0]?.width || 375;
+  const templateHeight = referenceScreens[0]?.height || 812;
+
+  // Group findings by flow type
+  const byFlow = new Map<string, MissingScreenFinding[]>();
+  for (const finding of findings) {
+    const key = finding.flow_type;
+    if (!byFlow.has(key)) byFlow.set(key, []);
+    byFlow.get(key)!.push(finding);
+  }
+
+  // Create frames with coordinates relative to section (starting at padding offset)
+  const sectionPadding = 50;
+  let localX = sectionPadding;
+
+  for (const [, flowFindings] of byFlow) {
+    for (const finding of flowFindings) {
+      const frame = await createPlaceholderFrame(
+        finding,
+        localX,
+        sectionPadding,
+        templateWidth,
+        templateHeight
+      );
+      placeholders.push(frame);
+      localX += templateWidth + 50;
+    }
+    localX += 50; // Extra gap between flows
+  }
+
+  // Create a Section to contain all placeholder frames
+  if (placeholders.length > 0) {
+    const section = figma.createSection();
+    section.name = "Suggested Screens";
+    section.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 }, opacity: 0.1 }];
+
+    // Position section to the right of existing screens
+    section.x = rightmostX + 100;
+    section.y = topY;
+
+    // Move all placeholders into the section
+    for (const placeholder of placeholders) {
+      section.appendChild(placeholder);
+    }
+
+    // Resize section to fit content
+    const sectionWidth = localX + sectionPadding;
+    const sectionHeight = templateHeight + sectionPadding * 2;
+    section.resizeWithoutConstraints(sectionWidth, sectionHeight);
+  }
+
+  return placeholders;
+}
+
+async function createPlaceholderFrame(
+  finding: MissingScreenFinding,
+  x: number,
+  y: number,
+  width: number,
+  height: number
+): Promise<FrameNode> {
+  const frame = figma.createFrame();
+  frame.name = finding.missing_screen.name || "Missing Screen";
+  frame.resize(width, height);
+  frame.x = x;
+  frame.y = y;
+  frame.cornerRadius = 8;
+  frame.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }]; // White background
+
+  // Calculate center position
+  const centerX = width / 2;
+  let currentY = 80;
+
+  // Icon placeholder (rounded square with + symbol)
+  const iconSize = 56;
+  const iconBg = figma.createFrame();
+  iconBg.name = "icon";
+  iconBg.resize(iconSize, iconSize);
+  iconBg.cornerRadius = 12;
+  iconBg.fills = [{ type: "SOLID", color: COLORS.primary, opacity: 0.1 }];
+  iconBg.layoutMode = "HORIZONTAL";
+  iconBg.primaryAxisSizingMode = "FIXED";
+  iconBg.counterAxisSizingMode = "FIXED";
+  iconBg.primaryAxisAlignItems = "CENTER";
+  iconBg.counterAxisAlignItems = "CENTER";
+
+  const iconText = figma.createText();
+  iconText.fontName = { family: "Inter", style: "Bold" };
+  iconText.fontSize = 24;
+  iconText.characters = "+";
+  iconText.fills = [{ type: "SOLID", color: COLORS.primary }];
+  iconBg.appendChild(iconText);
+
+  iconBg.x = centerX - iconSize / 2;
+  iconBg.y = currentY;
+  frame.appendChild(iconBg);
+  currentY += iconSize + 24;
+
+  // Title
+  const title = figma.createText();
+  title.name = "title";
+  title.fontName = { family: "Inter", style: "Semi Bold" };
+  title.fontSize = 18;
+  title.characters = finding.missing_screen.name || "Missing Screen";
+  title.fills = [{ type: "SOLID", color: COLORS.foreground }];
+  title.textAlignHorizontal = "CENTER";
+  title.x = centerX - title.width / 2;
+  title.y = currentY;
+  frame.appendChild(title);
+  currentY += title.height + 12;
+
+  // Description (only add if there's content)
+  const descText = finding.missing_screen.description || "";
+  if (descText) {
+    const desc = figma.createText();
+    desc.name = "description";
+    desc.fontName = { family: "Inter", style: "Regular" };
+    desc.fontSize = 14;
+    desc.characters = descText;
+    desc.fills = [{ type: "SOLID", color: COLORS.mutedForeground }];
+    desc.textAlignHorizontal = "CENTER";
+    desc.resize(width - 48, desc.height);
+    desc.textAutoResize = "HEIGHT";
+    desc.x = 24;
+    desc.y = currentY;
+    frame.appendChild(desc);
+    currentY += desc.height + 24;
+  } else {
+    currentY += 24;
+  }
+
+  // Suggested components section
+  if (finding.recommendation.components.length > 0) {
+    const label = figma.createText();
+    label.name = "components-label";
+    label.fontName = { family: "Inter", style: "Medium" };
+    label.fontSize = 10;
+    label.characters = "SUGGESTED COMPONENTS";
+    label.fills = [{ type: "SOLID", color: COLORS.mutedForeground }];
+    label.letterSpacing = { value: 0.5, unit: "PIXELS" };
+    label.x = centerX - label.width / 2;
+    label.y = currentY;
+    frame.appendChild(label);
+    currentY += label.height + 12;
+
+    // Create component chips row (still use auto-layout for the chips container)
+    const chipsRow = figma.createFrame();
+    chipsRow.name = "chips";
+    chipsRow.layoutMode = "HORIZONTAL";
+    chipsRow.primaryAxisSizingMode = "AUTO";
+    chipsRow.counterAxisSizingMode = "AUTO";
+    chipsRow.itemSpacing = 6;
+    chipsRow.fills = [];
+
+    for (const comp of finding.recommendation.components.slice(0, 4)) {
+      const chip = figma.createFrame();
+      chip.name = comp.shadcn_id;
+      chip.layoutMode = "HORIZONTAL";
+      chip.primaryAxisSizingMode = "AUTO";
+      chip.counterAxisSizingMode = "AUTO";
+      chip.paddingLeft = 8;
+      chip.paddingRight = 8;
+      chip.paddingTop = 4;
+      chip.paddingBottom = 4;
+      chip.cornerRadius = 4;
+      chip.fills = [{ type: "SOLID", color: COLORS.background }];
+      chip.strokes = [{ type: "SOLID", color: COLORS.border }];
+      chip.strokeWeight = 1;
+
+      const chipText = figma.createText();
+      chipText.fontName = { family: "Inter", style: "Medium" };
+      chipText.fontSize = 11;
+      chipText.characters = comp.label || comp.shadcn_id || "Component";
+      chipText.fills = [{ type: "SOLID", color: COLORS.foreground }];
+      chip.appendChild(chipText);
+
+      chipsRow.appendChild(chip);
+    }
+
+    frame.appendChild(chipsRow);
+    // Center the chips row after adding to frame (so we can get its width)
+    chipsRow.x = centerX - chipsRow.width / 2;
+    chipsRow.y = currentY;
+  }
+
+  // Mark as Edgy placeholder for later identification
+  frame.setPluginData("edgy-placeholder", "true");
+  frame.setPluginData("flow-type", finding.flow_type);
+  frame.setPluginData("screen-id", finding.missing_screen.id);
+
+  return frame;
 }

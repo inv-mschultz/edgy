@@ -1,0 +1,100 @@
+name: Settings Flow
+description: >
+  Settings flows should organize preferences into logical sections
+  with clear navigation and save/cancel actions.
+
+flow_type: settings
+
+triggers:
+  any_of:
+    - layer_name_patterns: ["(?i)(settings|preferences|config)"]
+    - layer_name_patterns: ["(?i)(account|profile).*(settings|edit)"]
+    - layer_name_patterns: ["(?i)(notification|privacy|security).*(settings)"]
+
+expected_screens:
+  - id: settings-overview
+    name: "Settings Overview"
+    description: "Main settings navigation with category list"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(settings|preferences)"]
+    components:
+      - shadcn_id: navigation-menu
+        label: "Settings Navigation"
+      - shadcn_id: card
+        label: "Settings Category Cards"
+
+  - id: profile-settings
+    name: "Profile Settings"
+    description: "Personal information and display preferences"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(profile|personal|account)"]
+    components:
+      - shadcn_id: avatar
+        label: "Profile Avatar"
+      - shadcn_id: input
+        label: "Profile Inputs"
+      - shadcn_id: button
+        label: "Save Profile Button"
+
+  - id: notification-settings
+    name: "Notification Settings"
+    description: "Email, push, and in-app notification preferences"
+    required: false
+    severity: info
+    detection:
+      layer_name_patterns: ["(?i)(notification|alert|email)"]
+    components:
+      - shadcn_id: switch
+        label: "Notification Toggles"
+      - shadcn_id: checkbox
+        label: "Notification Checkboxes"
+
+  - id: privacy-settings
+    name: "Privacy Settings"
+    description: "Data sharing and visibility controls"
+    required: false
+    severity: info
+    detection:
+      layer_name_patterns: ["(?i)(privacy|data|sharing)"]
+    components:
+      - shadcn_id: switch
+        label: "Privacy Toggles"
+      - shadcn_id: button
+        label: "Download My Data Button"
+      - shadcn_id: button
+        variant: destructive
+        label: "Delete Account Button"
+
+  - id: security-settings
+    name: "Security Settings"
+    description: "Password, 2FA, and session management"
+    required: false
+    severity: info
+    detection:
+      layer_name_patterns: ["(?i)(security|password|2fa|session)"]
+    components:
+      - shadcn_id: button
+        label: "Change Password Button"
+      - shadcn_id: switch
+        label: "2FA Toggle"
+      - shadcn_id: table
+        label: "Active Sessions Table"
+
+  - id: billing-settings
+    name: "Billing Settings"
+    description: "Subscription, payment methods, and invoices"
+    required: false
+    severity: info
+    detection:
+      layer_name_patterns: ["(?i)(billing|payment|subscription|invoice)"]
+    components:
+      - shadcn_id: card
+        label: "Current Plan Card"
+      - shadcn_id: button
+        label: "Manage Subscription Button"
+      - shadcn_id: table
+        label: "Invoice History Table"

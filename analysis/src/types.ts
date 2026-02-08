@@ -1,5 +1,49 @@
 // Shared types for the analysis engine — mirrors plugin types
 
+// --- Flow Types ---
+
+export type FlowType =
+  | "authentication"
+  | "checkout"
+  | "onboarding"
+  | "crud"
+  | "search"
+  | "settings"
+  | "upload"
+  | "subscription"
+  | "messaging"
+  | "booking";
+
+export interface DetectedFlowType {
+  type: FlowType;
+  confidence: "high" | "medium" | "low";
+  triggerScreens: string[];
+  triggerPatterns: string[];
+}
+
+export interface MissingScreenFinding {
+  id: string;
+  flow_type: FlowType;
+  flow_name: string;
+  severity: "critical" | "warning" | "info";
+  missing_screen: {
+    id: string;
+    name: string;
+    description: string;
+  };
+  recommendation: {
+    message: string;
+    components: ComponentSuggestion[];
+  };
+  placeholder?: {
+    suggested_name: string;
+    width: number;
+    height: number;
+  };
+}
+
+// --- Screen Extraction ---
+
 export interface ExtractedNode {
   id: string;
   name: string;
@@ -99,6 +143,7 @@ export interface AnalysisOutput {
   };
   screens: ScreenResult[];
   flow_findings: FlowFinding[];
+  missing_screen_findings: MissingScreenFinding[];
 }
 
 // --- Rule definitions ---

@@ -1,0 +1,89 @@
+name: Search Flow
+description: >
+  Search flows should provide clear input, results display, filtering
+  options, and proper empty/error states.
+
+flow_type: search
+
+triggers:
+  any_of:
+    - layer_name_patterns: ["(?i)(search|find|query)"]
+      with_patterns: ["search"]
+    - component_names: ["Search", "SearchInput", "Searchbox"]
+    - layer_name_patterns: ["(?i)(filter|refine|sort)"]
+
+expected_screens:
+  - id: search-input
+    name: "Search Input"
+    description: "Primary search interface with input field"
+    required: true
+    severity: critical
+    detection:
+      layer_name_patterns: ["(?i)(search|find)"]
+    components:
+      - shadcn_id: input
+        label: "Search Input"
+      - shadcn_id: button
+        label: "Search Button"
+      - shadcn_id: command
+        label: "Command Palette"
+
+  - id: search-results
+    name: "Search Results"
+    description: "Results display with item list and pagination"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(results|matches|found)"]
+    components:
+      - shadcn_id: card
+        label: "Result Cards"
+      - shadcn_id: pagination
+        label: "Results Pagination"
+      - shadcn_id: badge
+        label: "Result Count Badge"
+
+  - id: no-results
+    name: "No Results"
+    description: "Empty state when search returns no matches"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(no.?results|not.?found|no.?match|nothing)"]
+    components:
+      - shadcn_id: card
+        label: "No Results Card"
+      - shadcn_id: button
+        label: "Clear Search Button"
+
+  - id: filters
+    name: "Filters / Refinement"
+    description: "Advanced filtering and sorting options"
+    required: false
+    severity: info
+    detection:
+      layer_name_patterns: ["(?i)(filter|refine|advanced|sort)"]
+    components:
+      - shadcn_id: select
+        label: "Filter Selects"
+      - shadcn_id: checkbox
+        label: "Filter Checkboxes"
+      - shadcn_id: slider
+        label: "Range Sliders"
+      - shadcn_id: button
+        label: "Apply Filters Button"
+
+  - id: recent-searches
+    name: "Recent Searches"
+    description: "History of recent search queries"
+    required: false
+    severity: info
+    detection:
+      layer_name_patterns: ["(?i)(recent|history|previous)"]
+    components:
+      - shadcn_id: button
+        variant: ghost
+        label: "Recent Search Items"
+      - shadcn_id: button
+        variant: ghost
+        label: "Clear History Button"

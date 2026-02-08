@@ -1,0 +1,90 @@
+name: Upload Flow
+description: >
+  File upload flows should provide clear selection, progress indication,
+  success/error states, and preview capabilities.
+
+flow_type: upload
+
+triggers:
+  any_of:
+    - layer_name_patterns: ["(?i)(upload|import|attach)"]
+    - layer_name_patterns: ["(?i)(drag.?drop|drop.?zone|file.?input)"]
+    - layer_name_patterns: ["(?i)(select.?file|choose.?file|browse)"]
+
+expected_screens:
+  - id: upload-select
+    name: "File Selection"
+    description: "File picker with drag-drop zone and browse button"
+    required: true
+    severity: critical
+    detection:
+      layer_name_patterns: ["(?i)(upload|select|choose|drag|drop)"]
+    components:
+      - shadcn_id: card
+        label: "Drop Zone Card"
+      - shadcn_id: button
+        label: "Browse Files Button"
+      - shadcn_id: input
+        label: "File Input"
+
+  - id: upload-progress
+    name: "Upload Progress"
+    description: "Progress indicator during file upload"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(progress|uploading|processing)"]
+    components:
+      - shadcn_id: progress
+        label: "Upload Progress Bar"
+      - shadcn_id: button
+        variant: outline
+        label: "Cancel Upload Button"
+
+  - id: upload-success
+    name: "Upload Success"
+    description: "Success state with file preview and next actions"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(success|complete|uploaded|done)"]
+    components:
+      - shadcn_id: card
+        label: "Success Card"
+      - shadcn_id: button
+        label: "View File Button"
+      - shadcn_id: button
+        label: "Upload Another Button"
+
+  - id: upload-error
+    name: "Upload Error"
+    description: "Error state with retry option and error details"
+    required: true
+    severity: warning
+    detection:
+      layer_name_patterns: ["(?i)(error|failed|invalid|too.?large)"]
+    components:
+      - shadcn_id: alert
+        variant: destructive
+        label: "Error Alert"
+      - shadcn_id: button
+        label: "Retry Button"
+      - shadcn_id: button
+        variant: outline
+        label: "Choose Different File Button"
+
+  - id: file-preview
+    name: "File Preview"
+    description: "Preview of uploaded file before confirmation"
+    required: false
+    severity: info
+    detection:
+      layer_name_patterns: ["(?i)(preview|review|confirm)"]
+    components:
+      - shadcn_id: card
+        label: "Preview Card"
+      - shadcn_id: button
+        label: "Confirm Button"
+      - shadcn_id: button
+        variant: outline
+        label: "Replace File Button"

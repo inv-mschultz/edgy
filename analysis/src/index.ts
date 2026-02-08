@@ -105,6 +105,7 @@ async function main() {
     },
     screens: screenResults,
     flow_findings: flowFindings,
+    missing_screen_findings: [], // Flow-based detection only runs in plugin UI
   };
 
   // Write output

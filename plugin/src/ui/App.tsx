@@ -143,10 +143,10 @@ export function App() {
     postToPlugin({ type: "start-extraction" });
   }
 
-  function handleExportToCanvas() {
+  function handleExportToCanvas(includePlaceholders: boolean = false) {
     if (!results) return;
     setStatusMessage("Exporting findings to canvas...");
-    postToPlugin({ type: "save-findings", results });
+    postToPlugin({ type: "save-findings", results, includePlaceholders });
   }
 
   function handleOpenSettings() {
@@ -222,10 +222,7 @@ export function App() {
       <div className="custom-scroll-container" style={{ flex: 1, minHeight: 0 }}>
         <div ref={scrollRef} className="custom-scroll-content">
           {page === "select" && (
-            <SelectScreens
-              screens={screens}
-              onAnalyze={handleAnalyze}
-            />
+            <SelectScreens screens={screens} />
           )}
           {page === "analyzing" && (
             <Analyzing
@@ -263,6 +260,19 @@ export function App() {
           </div>
         )}
       </div>
+
+      {/* Sticky analyze button - only on select page */}
+      {page === "select" && (
+        <div className="flex-shrink-0 p-4 pt-2 border-t bg-background">
+          <button
+            onClick={handleAnalyze}
+            disabled={screens.length === 0}
+            className="w-full py-2.5 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Analyze {screens.length} Screen{screens.length !== 1 ? "s" : ""}
+          </button>
+        </div>
+      )}
 
       {/* Footer - sticky at bottom */}
       <footer className="flex-shrink-0 relative flex items-center justify-between px-4 py-2 border-t bg-background">

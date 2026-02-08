@@ -59,6 +59,21 @@ export default defineConfig(({ mode }) => {
                 ruleModules[file] = YAML.parse(content);
               }
 
+              // Load flow rule files
+              const flowsDir = path.join(knowledgeDir, "flows");
+              const flowModules: Record<string, unknown> = {};
+              try {
+                const flowFiles = fs
+                  .readdirSync(flowsDir)
+                  .filter((f: string) => f.endsWith(".yml") || f.endsWith(".yaml"));
+                for (const file of flowFiles) {
+                  const content = fs.readFileSync(path.join(flowsDir, file), "utf-8");
+                  flowModules[file] = YAML.parse(content);
+                }
+              } catch {
+                // Flows directory may not exist yet
+              }
+
               // Load component mappings
               const mappingsContent = fs.readFileSync(
                 path.join(knowledgeDir, "components", "component-mappings.yml"),
@@ -66,7 +81,7 @@ export default defineConfig(({ mode }) => {
               );
               const componentMappings = YAML.parse(mappingsContent);
 
-              return `export const rules = ${JSON.stringify(ruleModules)};\nexport const componentMappings = ${JSON.stringify(componentMappings)};`;
+              return `export const rules = ${JSON.stringify(ruleModules)};\nexport const flows = ${JSON.stringify(flowModules)};\nexport const componentMappings = ${JSON.stringify(componentMappings)};`;
             }
           },
         },

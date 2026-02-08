@@ -10,6 +10,7 @@ import type {
   AnalysisOutput,
   AnalysisFinding,
   FlowFinding,
+  MissingScreenFinding,
   ExtractedNode,
   ExtractedScreen,
 } from "./types";
@@ -38,29 +39,29 @@ interface CondensedNode {
   children: CondensedNode[];
 }
 
+interface FindingRefinement {
+  id: string;
+  action: "keep" | "remove" | "modify";
+  severity?: "critical" | "warning" | "info";
+  title?: string;
+  description?: string;
+  recommendation_message?: string;
+  removal_reason?: string;
+}
+
 interface LLMRefinement {
   screens: Array<{
     screen_id: string;
-    findings: Array<{
-      id: string;
-      action: "keep" | "remove" | "modify";
-      severity?: "critical" | "warning" | "info";
-      title?: string;
-      description?: string;
-      recommendation_message?: string;
-      removal_reason?: string;
-    }>;
+    findings: FindingRefinement[];
   }>;
-  flow_findings: Array<{
-    id: string;
-    action: "keep" | "remove" | "modify";
-    severity?: "critical" | "warning" | "info";
-    title?: string;
-    description?: string;
-    recommendation_message?: string;
-    removal_reason?: string;
-  }>;
+  flow_findings: FindingRefinement[];
+  missing_screen_findings?: FindingRefinement[];
   flow_insights?: string[];
+  suggested_flows?: Array<{
+    flow_type: string;
+    reason: string;
+    missing_screens: string[];
+  }>;
 }
 
 // --- Constants ---
@@ -95,6 +96,17 @@ You receive the heuristic analysis results along with screen thumbnails and rele
 
 4. **Add flow-level insights**: When findings across multiple screens are related, note the connection. For example, "Screen 2 shows an error state for the email field, but the password field on Screen 1 still lacks one."
 
+## Flow Completeness Analysis
+
+In addition to reviewing edge case findings, analyze flow completeness:
+
+1. **Review missing screen findings**: For each "missing screen" finding, assess:
+   - Is this screen truly missing, or does it exist with a different name?
+   - Is this screen necessary for this specific use case?
+   - Adjust severity if needed (e.g., MFA might be "info" for simple apps)
+
+2. **Suggest additional flows**: If you see patterns suggesting a flow type the heuristics missed, add to suggested_flows.
+
 ## Response Format
 Respond with a JSON object (no markdown code fences, just raw JSON). The schema:
 
@@ -115,30 +127,33 @@ Respond with a JSON object (no markdown code fences, just raw JSON). The schema:
       ]
     }
   ],
-  "flow_findings": [
+  "flow_findings": [...same structure...],
+  "missing_screen_findings": [
     {
-      "id": "original flow finding ID",
+      "id": "mf-001",
       "action": "keep" | "remove" | "modify",
       "severity": "critical" | "warning" | "info",
-      "title": "refined title",
-      "description": "refined description",
-      "recommendation_message": "refined recommendation",
-      "removal_reason": "why this is a false positive"
+      "removal_reason": "Screen exists as 'Password Recovery' (different name)"
     }
   ],
-  "flow_insights": [
-    "Any cross-screen observations worth noting"
+  "flow_insights": ["Cross-screen observations"],
+  "suggested_flows": [
+    {
+      "flow_type": "subscription",
+      "reason": "Detected pricing table but no subscription management screens",
+      "missing_screens": ["Cancel Subscription", "Billing History"]
+    }
   ]
 }
 
 ## Important Rules
-- Do NOT invent new findings — only review existing ones
+- Do NOT invent new screen-level findings — only review existing ones
 - Do NOT change finding IDs, rule_ids, categories, affected_nodes, or affected_area
 - Do NOT change the component recommendations (those come from a curated knowledge base)
 - When in doubt, KEEP the finding — it's better to flag a potential issue than miss one
 - Be VERY concise — keep descriptions under 100 characters
 - Only use "modify" when truly necessary; prefer "keep" or "remove"
-- Skip flow_insights unless critical`;
+- Skip flow_insights and suggested_flows unless truly valuable`;
 
 // --- Public API ---
 
@@ -364,6 +379,25 @@ function buildUserMessage(
     });
   }
 
+  // Missing screen findings
+  if (heuristicOutput.missing_screen_findings?.length > 0) {
+    content.push({
+      type: "text",
+      text: `\n--- Missing Screen Findings ---\n${JSON.stringify(
+        heuristicOutput.missing_screen_findings.map((f) => ({
+          id: f.id,
+          flow_type: f.flow_type,
+          flow_name: f.flow_name,
+          severity: f.severity,
+          missing_screen: f.missing_screen,
+          recommendation: f.recommendation.message,
+        })),
+        null,
+        2
+      )}\n`,
+    });
+  }
+
   content.push({
     type: "text",
     text: "\nPlease review all findings and respond with your refinements in the specified JSON format.",
@@ -467,6 +501,9 @@ function parseAndValidateResponse(responseText: string): LLMRefinement {
   if (!parsed.flow_findings) {
     parsed.flow_findings = [];
   }
+  if (!parsed.missing_screen_findings) {
+    parsed.missing_screen_findings = [];
+  }
 
   return parsed as LLMRefinement;
 }
@@ -540,10 +577,33 @@ function mergeRefinements(
       };
     });
 
+  // Process missing screen findings
+  if (refinements.missing_screen_findings && output.missing_screen_findings) {
+    const missingActions = new Map(
+      refinements.missing_screen_findings.map((f) => [f.id, f])
+    );
+
+    output.missing_screen_findings = (output.missing_screen_findings as MissingScreenFinding[])
+      .filter((finding) => {
+        const action = missingActions.get(finding.id);
+        return !action || action.action !== "remove";
+      })
+      .map((finding) => {
+        const action = missingActions.get(finding.id);
+        if (!action || action.action !== "modify") return finding;
+
+        return {
+          ...finding,
+          severity: action.severity ?? finding.severity,
+        };
+      });
+  }
+
   // Recalculate summary
   const allFindings = [
     ...output.screens.flatMap((s) => s.findings),
     ...output.flow_findings,
+    ...(output.missing_screen_findings || []),
   ];
 
   output.summary = {

@@ -17,13 +17,21 @@ import {
   groupScreensByFlow,
   getFlowSiblings,
 } from "@analysis/flow-grouper";
+import { detectFlowTypes } from "@analysis/flow-type-detector";
+import {
+  generateMissingScreenFindings,
+  resetMissingScreenCounter,
+} from "@analysis/flow-finding-generator";
 import { loadBundledRules, loadBundledMappings } from "./knowledge-loader";
+import { loadBundledFlowRules } from "./flow-loader";
 import type {
   AnalysisInput,
   AnalysisOutput,
   ScreenResult,
   AnalysisFinding,
   ComponentSuggestion,
+  DetectedPattern,
+  MissingScreenFinding,
 } from "./types";
 
 interface ComponentMapping {
@@ -43,18 +51,22 @@ interface MappingEntry {
  */
 export function runAnalysis(input: AnalysisInput): AnalysisOutput {
   resetFindingCounter();
+  resetMissingScreenCounter();
 
   const rules = loadBundledRules();
   const mappings = loadBundledMappings();
+  const flowRules = loadBundledFlowRules();
 
   // Group screens by flow (shared name prefix)
   const flowGroups = groupScreensByFlow(input.screens as any[]);
 
   const screenResults: ScreenResult[] = [];
+  const allPatterns = new Map<string, DetectedPattern[]>();
 
   for (const screen of input.screens) {
     // Step 1: Detect UI patterns in the node tree
     const patterns = detectPatterns(screen.node_tree as any);
+    allPatterns.set(screen.screen_id, patterns as DetectedPattern[]);
 
     // Step 2: Match rules against detected patterns
     const triggeredRules = matchRules(patterns, rules);
@@ -85,16 +97,25 @@ export function runAnalysis(input: AnalysisInput): AnalysisOutput {
   // Deduplicate findings within flow groups
   deduplicateFindings(screenResults, flowGroups);
 
-  // Flow-level findings
+  // Flow-level findings (existing edge case checks)
   const flowFindings = generateFlowFindings(
     input.screens as any[],
     rules,
     ""
   );
 
+  // NEW: Flow type detection and missing screen findings
+  const detectedFlowTypes = detectFlowTypes(input.screens as any[], allPatterns as any);
+  const missingScreenFindings = generateMissingScreenFindings(
+    input.screens as any[],
+    detectedFlowTypes,
+    flowRules as any[]
+  );
+
   const totalFindings =
     screenResults.reduce((sum, s) => sum + s.findings.length, 0) +
-    flowFindings.length;
+    flowFindings.length +
+    missingScreenFindings.length;
 
   return {
     analysis_id: input.analysis_id,
@@ -102,12 +123,13 @@ export function runAnalysis(input: AnalysisInput): AnalysisOutput {
     summary: {
       screens_analyzed: input.screens.length,
       total_findings: totalFindings,
-      critical: countBySeverity(screenResults, flowFindings, "critical"),
-      warning: countBySeverity(screenResults, flowFindings, "warning"),
-      info: countBySeverity(screenResults, flowFindings, "info"),
+      critical: countBySeverityAll(screenResults, flowFindings, missingScreenFindings, "critical"),
+      warning: countBySeverityAll(screenResults, flowFindings, missingScreenFindings, "warning"),
+      info: countBySeverityAll(screenResults, flowFindings, missingScreenFindings, "info"),
     },
     screens: screenResults,
     flow_findings: flowFindings as any[],
+    missing_screen_findings: missingScreenFindings,
   };
 }
 
@@ -195,5 +217,16 @@ function countBySeverity(
     count += screen.findings.filter((f) => f.severity === severity).length;
   }
   count += flowFindings.filter((f) => f.severity === severity).length;
+  return count;
+}
+
+function countBySeverityAll(
+  screens: ScreenResult[],
+  flowFindings: { severity: string }[],
+  missingScreenFindings: MissingScreenFinding[],
+  severity: string
+): number {
+  let count = countBySeverity(screens, flowFindings, severity);
+  count += missingScreenFindings.filter((f) => f.severity === severity).length;
   return count;
 }

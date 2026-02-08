@@ -2,6 +2,69 @@
 // Shared types for the Edgy plugin
 // ============================================================
 
+// --- Flow Types ---
+
+export type FlowType =
+  | "authentication"
+  | "checkout"
+  | "onboarding"
+  | "crud"
+  | "search"
+  | "settings"
+  | "upload"
+  | "subscription"
+  | "messaging"
+  | "booking";
+
+export interface DetectedFlowType {
+  type: FlowType;
+  confidence: "high" | "medium" | "low";
+  triggerScreens: string[];
+  triggerPatterns: string[];
+}
+
+export interface MissingScreenFinding {
+  id: string;
+  flow_type: FlowType;
+  flow_name: string;
+  severity: "critical" | "warning" | "info";
+  missing_screen: {
+    id: string;
+    name: string;
+    description: string;
+  };
+  recommendation: {
+    message: string;
+    components: ComponentSuggestion[];
+  };
+  placeholder?: {
+    suggested_name: string;
+    width: number;
+    height: number;
+  };
+}
+
+// --- Pattern Detection ---
+
+export type PatternType =
+  | "form"
+  | "form-field"
+  | "list"
+  | "data-display"
+  | "button"
+  | "destructive-action"
+  | "navigation"
+  | "search"
+  | "media"
+  | "modal";
+
+export interface DetectedPattern {
+  type: PatternType;
+  nodes: ExtractedNode[];
+  confidence: "high" | "medium" | "low";
+  context: string;
+}
+
 // --- Screen Extraction ---
 
 export interface ExtractedNode {
@@ -105,6 +168,7 @@ export interface AnalysisOutput {
   };
   screens: ScreenResult[];
   flow_findings: FlowFinding[];
+  missing_screen_findings: MissingScreenFinding[];
   llm_enhanced?: boolean;
   llm_error?: string;
 }
@@ -140,7 +204,7 @@ export type PluginMessage =
 
 export type UIMessage =
   | { type: "start-extraction" }
-  | { type: "save-findings"; results: AnalysisOutput }
+  | { type: "save-findings"; results: AnalysisOutput; includePlaceholders?: boolean }
   | { type: "get-api-key" }
   | { type: "set-api-key"; key: string }
   | { type: "clear-api-key" }
