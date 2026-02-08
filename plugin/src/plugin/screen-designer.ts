@@ -587,8 +587,8 @@ async function fixButtonProximityVariants(frame: FrameNode, context: DesignConte
       // Horizontally arranged - rightmost is primary
       primaryBtn = group.reduce((max, b) => b.x > max.x ? b : max, group[0]);
     } else {
-      // Vertically arranged - bottom is typically primary (above the fold)
-      primaryBtn = group.reduce((max, b) => b.y > max.y ? b : max, group[0]);
+      // Vertically arranged - topmost (lower Y) is primary, bottom is secondary
+      primaryBtn = group.reduce((min, b) => b.y < min.y ? b : min, group[0]);
     }
 
     // Make others secondary by swapping with secondary variant if possible
@@ -825,6 +825,15 @@ async function createInputFromAnalysis(
         if (Math.abs(clone.width - inputWidth) > 20) {
           clone.resize(inputWidth, clone.height);
         }
+        // Check if clone has a visible label - if not, wrap with one
+        const hasLabel = clone.findAll(n =>
+          n.type === "TEXT" &&
+          n.name.toLowerCase().includes("label") &&
+          (n as TextNode).characters.length > 0
+        ).length > 0;
+        if (!hasLabel) {
+          return wrapInputWithLabel(clone, label, inputWidth);
+        }
         return clone;
       } catch (e) {
         console.warn("[edgy] Failed to clone input:", e);
@@ -845,7 +854,8 @@ async function createInputFromAnalysis(
           if (Math.abs(instance.width - inputWidth) > 20) {
             instance.resize(inputWidth, instance.height);
           }
-          return instance;
+          // Wrap with label if the component doesn't have one built-in
+          return wrapInputWithLabel(instance, label, inputWidth);
         }
       } catch (e) {
         console.warn("[edgy] Failed to instantiate input component:", e);
@@ -859,6 +869,42 @@ async function createInputFromAnalysis(
     return createLabeledInputWithValue(label, value, inputWidth);
   }
   return createLabeledInput(label, placeholder, inputWidth);
+}
+
+/**
+ * Wraps an input component with a label above it in a vertical layout.
+ */
+function wrapInputWithLabel(input: SceneNode, label: string, width: number): FrameNode {
+  const container = figma.createFrame();
+  container.name = `Input: ${label}`;
+  container.layoutMode = "VERTICAL";
+  container.primaryAxisSizingMode = "AUTO";
+  container.counterAxisSizingMode = "FIXED";
+  container.resize(width, 10); // Height will auto-adjust
+  container.itemSpacing = 6;
+  container.fills = [];
+  container.cornerRadius = 0;
+
+  // Label above the input
+  const labelText = figma.createText();
+  labelText.fontName = { family: FONT_FAMILY, style: "Medium" };
+  labelText.fontSize = 14;
+  labelText.characters = label;
+  labelText.fills = [{ type: "SOLID", color: COLORS.foreground }];
+  container.appendChild(labelText);
+
+  // Input below
+  container.appendChild(input);
+
+  // Make input fill width
+  if ("layoutGrow" in input) {
+    input.layoutGrow = 0;
+  }
+  if ("layoutAlign" in input) {
+    (input as FrameNode).layoutAlign = "STRETCH";
+  }
+
+  return container;
 }
 
 /**
@@ -1001,6 +1047,7 @@ function createToggleRowWithLabel(toggle: SceneNode, label: string, width: numbe
   row.primaryAxisAlignItems = "SPACE_BETWEEN";
   row.counterAxisAlignItems = "CENTER";
   row.fills = [];
+  row.cornerRadius = 0;
 
   // Label on the left
   const labelText = figma.createText();
@@ -1036,6 +1083,7 @@ async function createButtonGroup(
   group.resize(groupWidth, 100);
   group.itemSpacing = gap;
   group.fills = [];
+  group.cornerRadius = 0;
 
   for (let i = 0; i < buttons.length; i++) {
     const { label } = buttons[i];
@@ -1149,6 +1197,7 @@ async function designAuthScreenEnhanced(
     form.counterAxisSizingMode = "FIXED";
     form.resize(contentWidth, 100);
     form.fills = [];
+    form.cornerRadius = 0;
     form.x = centerX - contentWidth / 2;
     form.y = y;
 
@@ -1238,6 +1287,7 @@ async function designSignupScreenEnhanced(frame: FrameNode, context: DesignConte
   form.counterAxisSizingMode = "FIXED";
   form.resize(contentWidth, 100);
   form.fills = [];
+  form.cornerRadius = 0;
   form.x = centerX - contentWidth / 2;
   form.y = y;
 
@@ -1307,6 +1357,7 @@ async function designForgotPasswordScreenEnhanced(frame: FrameNode, context: Des
   form.counterAxisSizingMode = "FIXED";
   form.resize(contentWidth, 100);
   form.fills = [];
+  form.cornerRadius = 0;
   form.x = centerX - contentWidth / 2;
   form.y = y;
 
@@ -1359,6 +1410,7 @@ async function design2FAScreenEnhanced(frame: FrameNode, context: DesignContext)
   form.counterAxisSizingMode = "FIXED";
   form.resize(contentWidth, 100);
   form.fills = [];
+  form.cornerRadius = 0;
   form.x = centerX - contentWidth / 2;
   form.y = y;
 
@@ -1411,6 +1463,7 @@ async function designGenericAuthScreenEnhanced(
   form.counterAxisSizingMode = "FIXED";
   form.resize(contentWidth, 100);
   form.fills = [];
+  form.cornerRadius = 0;
   form.x = centerX - contentWidth / 2;
   form.y = y;
 
@@ -1805,6 +1858,7 @@ async function designGenericScreenEnhanced(
     form.counterAxisSizingMode = "FIXED";
     form.resize(contentWidth, 100);
     form.fills = [];
+    form.cornerRadius = 0;
     form.x = centerX - contentWidth / 2;
     form.y = y;
 
@@ -3748,6 +3802,7 @@ function createFormContainer(width: number): FrameNode {
   form.resize(width, 100);
   form.itemSpacing = 16;
   form.fills = [];
+  form.cornerRadius = 0;
   return form;
 }
 
