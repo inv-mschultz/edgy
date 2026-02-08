@@ -9,8 +9,21 @@ import {
   clearAllCanvasDocumentation,
   findFrameById,
   repositionAllBadges,
+  extractDesignTokens,
   type StoredFindingsData,
 } from "./health-indicator";
+import { extractMultipleFrameContexts } from "./frame-context";
+import {
+  generatePrototypeBundle,
+  generateAllPrototypeFiles,
+} from "./prototype-export";
+import {
+  discoverComponents,
+  createComponentInstance,
+  findBestComponent,
+  serializeLibraryForLLM,
+  type ComponentLibrary,
+} from "./component-library";
 import type {
   UIMessage,
   PluginMessage,
@@ -37,12 +50,35 @@ figma.on("selectionchange", sendSelectionUpdate);
 // Send initial selection
 sendSelectionUpdate();
 
+// --- Component Library Cache ---
+
+let cachedComponentLibrary: ComponentLibrary | null = null;
+
+async function getComponentLibrary(): Promise<ComponentLibrary> {
+  if (!cachedComponentLibrary) {
+    cachedComponentLibrary = await discoverComponents();
+  }
+  return cachedComponentLibrary;
+}
+
+// Discover components on startup (in background)
+getComponentLibrary().catch((e) => console.warn("[edgy] Component discovery failed:", e));
+
 // --- Message Handlers ---
 
 figma.ui.onmessage = async (msg: UIMessage) => {
   switch (msg.type) {
     case "start-extraction": {
       try {
+        // Get selected frames for context extraction
+        const selectedFrames = figma.currentPage.selection
+          .filter((node): node is FrameNode => node.type === "FRAME");
+
+        // Extract and store frame context for design token analysis
+        if (selectedFrames.length > 0) {
+          await extractMultipleFrameContexts(selectedFrames);
+        }
+
         const data = await extractScreens(figma.currentPage.selection, (current, total) => {
           const progressMsg: PluginMessage = {
             type: "thumbnail-progress",
@@ -85,10 +121,166 @@ figma.ui.onmessage = async (msg: UIMessage) => {
       break;
     }
 
+    case "get-provider": {
+      const provider = await figma.clientStorage.getAsync("edgy-ai-provider");
+      figma.ui.postMessage({ type: "provider-result", provider: provider || "claude" });
+      break;
+    }
+
+    case "set-provider": {
+      await figma.clientStorage.setAsync("edgy-ai-provider", msg.provider);
+      figma.ui.postMessage({ type: "provider-saved" });
+      break;
+    }
+
+    case "get-ai-screen-gen": {
+      const enabled = await figma.clientStorage.getAsync("edgy-ai-screen-gen");
+      figma.ui.postMessage({ type: "ai-screen-gen-result", enabled: enabled ?? false });
+      break;
+    }
+
+    case "set-ai-screen-gen": {
+      await figma.clientStorage.setAsync("edgy-ai-screen-gen", msg.enabled);
+      figma.ui.postMessage({ type: "ai-screen-gen-saved" });
+      break;
+    }
+
+    case "get-vercel-token": {
+      const token = await figma.clientStorage.getAsync("edgy-vercel-token");
+      figma.ui.postMessage({ type: "vercel-token-result", token: token || null });
+      break;
+    }
+
+    case "set-vercel-token": {
+      await figma.clientStorage.setAsync("edgy-vercel-token", msg.token);
+      figma.ui.postMessage({ type: "vercel-token-saved" });
+      break;
+    }
+
+    case "clear-vercel-token": {
+      await figma.clientStorage.deleteAsync("edgy-vercel-token");
+      figma.ui.postMessage({ type: "vercel-token-saved" });
+      break;
+    }
+
+    case "get-component-library": {
+      try {
+        const library = await getComponentLibrary();
+        const serialized = serializeLibraryForLLM(library);
+        const componentList = Array.from(library.components.values()).map((c) => ({
+          key: c.key,
+          name: c.name,
+          componentSetName: c.componentSetName,
+          variantProperties: c.variantProperties,
+          width: c.width,
+          height: c.height,
+        }));
+        figma.ui.postMessage({
+          type: "component-library-result",
+          serialized,
+          components: componentList,
+          stats: {
+            total: library.components.size,
+            buttons: library.buttons.length,
+            inputs: library.inputs.length,
+            cards: library.cards.length,
+            checkboxes: library.checkboxes.length,
+          },
+        });
+      } catch (error) {
+        figma.ui.postMessage({
+          type: "component-library-result",
+          serialized: "",
+          components: [],
+          stats: { total: 0, buttons: 0, inputs: 0, cards: 0, checkboxes: 0 },
+        });
+      }
+      break;
+    }
+
+    case "instantiate-component": {
+      try {
+        const instance = await createComponentInstance(msg.componentKey);
+        if (instance) {
+          figma.ui.postMessage({
+            type: "component-instantiated",
+            success: true,
+            nodeId: instance.id,
+          });
+        } else {
+          figma.ui.postMessage({
+            type: "component-instantiated",
+            success: false,
+            error: "Failed to create instance",
+          });
+        }
+      } catch (error) {
+        figma.ui.postMessage({
+          type: "component-instantiated",
+          success: false,
+          error: error instanceof Error ? error.message : "Instantiation failed",
+        });
+      }
+      break;
+    }
+
+    case "get-design-tokens": {
+      try {
+        const frames: FrameNode[] = [];
+        for (const screenId of msg.screenIds) {
+          const frame = findFrameById(screenId);
+          if (frame) frames.push(frame);
+        }
+
+        if (frames.length === 0) {
+          // Return default tokens if no frames found
+          figma.ui.postMessage({
+            type: "design-tokens-result",
+            tokens: {
+              primaryColor: { r: 0.09, g: 0.09, b: 0.09 },
+              backgroundColor: { r: 1, g: 1, b: 1 },
+              textColor: { r: 0.09, g: 0.09, b: 0.09 },
+              mutedColor: { r: 0.45, g: 0.45, b: 0.45 },
+              borderColor: { r: 0.9, g: 0.9, b: 0.9 },
+              borderRadius: 8,
+              fontFamily: "Inter",
+              baseFontSize: 14,
+              headingFontSize: 24,
+            },
+          });
+        } else {
+          const tokens = await extractDesignTokens(frames);
+          figma.ui.postMessage({
+            type: "design-tokens-result",
+            tokens,
+          });
+        }
+      } catch (error) {
+        console.error("[edgy] Failed to extract design tokens:", error);
+        // Return default tokens on error
+        figma.ui.postMessage({
+          type: "design-tokens-result",
+          tokens: {
+            primaryColor: { r: 0.09, g: 0.09, b: 0.09 },
+            backgroundColor: { r: 1, g: 1, b: 1 },
+            textColor: { r: 0.09, g: 0.09, b: 0.09 },
+            mutedColor: { r: 0.45, g: 0.45, b: 0.45 },
+            borderColor: { r: 0.9, g: 0.9, b: 0.9 },
+            borderRadius: 8,
+            fontFamily: "Inter",
+            baseFontSize: 14,
+            headingFontSize: 24,
+          },
+        });
+      }
+      break;
+    }
+
     case "save-findings": {
       try {
         const results: AnalysisOutput = msg.results;
         const includePlaceholders = msg.includePlaceholders ?? false;
+        const generatedLayouts = msg.generatedLayouts;
 
         // Collect frames for each screen
         const frames: FrameNode[] = [];
@@ -129,7 +321,8 @@ figma.ui.onmessage = async (msg: UIMessage) => {
         if (includePlaceholders && results.missing_screen_findings?.length > 0) {
           const placeholders = await generatePlaceholderFrames(
             results.missing_screen_findings,
-            frames
+            frames,
+            generatedLayouts
           );
 
           // Select the new placeholder frames to show the user
@@ -188,6 +381,48 @@ figma.ui.onmessage = async (msg: UIMessage) => {
         removedCount: removed,
       };
       figma.ui.postMessage(doneMsg);
+      break;
+    }
+
+    case "export-prototype": {
+      try {
+        const { request } = msg;
+
+        // Send progress update
+        const progressMsg: PluginMessage = {
+          type: "prototype-progress",
+          message: "Generating prototype bundle...",
+        };
+        figma.ui.postMessage(progressMsg);
+
+        // Generate the prototype bundle
+        const bundle = generatePrototypeBundle(
+          request.existingScreens,
+          request.generatedLayouts,
+          request.missingFindings,
+          request.designTokens,
+          request.options
+        );
+
+        // Generate all files
+        const files = generateAllPrototypeFiles(
+          bundle,
+          request.options?.projectName || "prototype"
+        );
+
+        // Send files back to UI
+        const readyMsg: PluginMessage = {
+          type: "prototype-ready",
+          files,
+        };
+        figma.ui.postMessage(readyMsg);
+      } catch (error) {
+        const errorMsg: PluginMessage = {
+          type: "error",
+          message: error instanceof Error ? error.message : "Prototype export failed",
+        };
+        figma.ui.postMessage(errorMsg);
+      }
       break;
     }
   }

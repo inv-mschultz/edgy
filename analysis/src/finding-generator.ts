@@ -224,9 +224,12 @@ function computeBoundingBox(
 }
 
 function flattenTree(node: ExtractedNode): ExtractedNode[] {
+  if (!node) return [];
   const result: ExtractedNode[] = [node];
-  for (const child of node.children) {
-    result.push(...flattenTree(child));
+  if (node.children && Array.isArray(node.children)) {
+    for (const child of node.children) {
+      result.push(...flattenTree(child));
+    }
   }
   return result;
 }

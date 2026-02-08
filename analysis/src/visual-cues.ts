@@ -48,15 +48,31 @@ export function nodeHasVisualCue(
   node: ExtractedNode,
   cueType: VisualCueType
 ): boolean {
-  if (node.strokes) {
-    for (const [r, g, b] of node.strokes) {
-      if (classifyColor(r, g, b) === cueType) return true;
+  if (node.strokes && Array.isArray(node.strokes)) {
+    for (const stroke of node.strokes) {
+      // Handle both old tuple format [r, g, b] and new format
+      if (Array.isArray(stroke)) {
+        const [r, g, b] = stroke;
+        if (classifyColor(r, g, b) === cueType) return true;
+      } else if (stroke && typeof stroke === "object" && "color" in stroke) {
+        // New RichStroke format
+        const color = stroke.color as { r: number; g: number; b: number };
+        if (classifyColor(color.r, color.g, color.b) === cueType) return true;
+      }
     }
   }
 
-  if (node.fills) {
-    for (const [r, g, b] of node.fills) {
-      if (classifyColor(r, g, b) === cueType) return true;
+  if (node.fills && Array.isArray(node.fills)) {
+    for (const fill of node.fills) {
+      // Handle both old tuple format [r, g, b] and new format
+      if (Array.isArray(fill)) {
+        const [r, g, b] = fill;
+        if (classifyColor(r, g, b) === cueType) return true;
+      } else if (fill && typeof fill === "object" && "color" in fill) {
+        // New RichFill format
+        const color = fill.color as { r: number; g: number; b: number };
+        if (classifyColor(color.r, color.g, color.b) === cueType) return true;
+      }
     }
   }
 
@@ -71,9 +87,12 @@ export function subtreeHasVisualCue(
   node: ExtractedNode,
   cueType: VisualCueType
 ): boolean {
+  if (!node) return false;
   if (nodeHasVisualCue(node, cueType)) return true;
-  for (const child of node.children) {
-    if (subtreeHasVisualCue(child, cueType)) return true;
+  if (node.children && Array.isArray(node.children)) {
+    for (const child of node.children) {
+      if (subtreeHasVisualCue(child, cueType)) return true;
+    }
   }
   return false;
 }

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import type { AnalysisOutput, MissingScreenFinding, FlowType } from "../lib/types";
+import type { AnalysisOutput, MissingScreenFinding, ScreenResult, AnalysisFinding } from "../lib/types";
 import { Sparkles, AlertTriangle } from "lucide-react";
 import { HealthGauge } from "../components/HealthGauge";
 
@@ -39,12 +39,163 @@ function calculateHealth(results: AnalysisOutput): number {
   return Math.max(0, Math.min(100, Math.round(health)));
 }
 
+// --- Flow Grouping ---
+
+interface FlowGroup {
+  screenFindings: ScreenResult[];
+  flowFindings: AnalysisFinding[];
+  missingScreens: MissingScreenFinding[];
+}
+
+/**
+ * Detects flow type from screen name patterns.
+ */
+function detectFlowTypeFromScreen(screen: ScreenResult): string {
+  const name = screen.name.toLowerCase();
+
+  if (name.includes("login") || name.includes("signup") || name.includes("sign up") ||
+      name.includes("register") || name.includes("auth") || name.includes("password") ||
+      name.includes("forgot") || name.includes("reset") || name.includes("verify") ||
+      name.includes("2fa") || name.includes("mfa")) {
+    return "authentication";
+  }
+  if (name.includes("cart") || name.includes("checkout") || name.includes("payment") ||
+      name.includes("order") || name.includes("shipping") || name.includes("billing")) {
+    return "checkout";
+  }
+  if (name.includes("onboard") || name.includes("welcome") || name.includes("tutorial") ||
+      name.includes("intro") || name.includes("getting started") || name.includes("setup")) {
+    return "onboarding";
+  }
+  if (name.includes("search") || name.includes("filter") || name.includes("results") ||
+      name.includes("browse")) {
+    return "search";
+  }
+  if (name.includes("setting") || name.includes("preference") || name.includes("config") ||
+      name.includes("profile") || name.includes("account")) {
+    return "settings";
+  }
+  if (name.includes("upload") || name.includes("import") || name.includes("attach")) {
+    return "upload";
+  }
+  if (name.includes("create") || name.includes("edit") || name.includes("new") ||
+      name.includes("add") || name.includes("delete") || name.includes("list") ||
+      name.includes("detail") || name.includes("view")) {
+    return "crud";
+  }
+
+  return "general";
+}
+
+/**
+ * Detects flow type from finding content.
+ */
+function detectFlowTypeFromFinding(finding: AnalysisFinding): string {
+  const text = `${finding.title} ${finding.description}`.toLowerCase();
+
+  if (text.includes("login") || text.includes("auth") || text.includes("password") ||
+      text.includes("session") || text.includes("signup") || text.includes("register")) {
+    return "authentication";
+  }
+  if (text.includes("cart") || text.includes("checkout") || text.includes("payment") ||
+      text.includes("order")) {
+    return "checkout";
+  }
+  if (text.includes("onboard") || text.includes("welcome") || text.includes("tutorial")) {
+    return "onboarding";
+  }
+  if (text.includes("search") || text.includes("filter")) {
+    return "search";
+  }
+  if (text.includes("setting") || text.includes("preference")) {
+    return "settings";
+  }
+  if (text.includes("upload") || text.includes("file")) {
+    return "upload";
+  }
+
+  return "general";
+}
+
+/**
+ * Formats flow type into human-readable name.
+ */
+function formatFlowName(flowType: string): string {
+  const names: Record<string, string> = {
+    "authentication": "Authentication",
+    "checkout": "Checkout",
+    "onboarding": "Onboarding",
+    "search": "Search",
+    "settings": "Settings",
+    "upload": "Upload",
+    "crud": "Data Management",
+    "general": "General",
+  };
+  return names[flowType] || flowType.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+/**
+ * Groups all findings by flow type.
+ */
+function groupAllFindingsByFlow(results: AnalysisOutput): Map<string, FlowGroup> {
+  const groups = new Map<string, FlowGroup>();
+
+  const getGroup = (flowType: string): FlowGroup => {
+    if (!groups.has(flowType)) {
+      groups.set(flowType, {
+        screenFindings: [],
+        flowFindings: [],
+        missingScreens: [],
+      });
+    }
+    return groups.get(flowType)!;
+  };
+
+  // Group screen findings by detected flow type
+  for (const screen of results.screens) {
+    const flowType = detectFlowTypeFromScreen(screen);
+    const group = getGroup(flowType);
+    if (screen.findings.length > 0) {
+      group.screenFindings.push(screen);
+    }
+  }
+
+  // Group flow-level findings
+  for (const finding of results.flow_findings) {
+    const flowType = detectFlowTypeFromFinding(finding);
+    const group = getGroup(flowType);
+    group.flowFindings.push(finding);
+  }
+
+  // Group missing screen findings by their explicit flow_type
+  for (const finding of results.missing_screen_findings || []) {
+    const group = getGroup(finding.flow_type);
+    group.missingScreens.push(finding);
+  }
+
+  return groups;
+}
+
+/**
+ * Count total findings in a flow group.
+ */
+function countFlowFindings(group: FlowGroup): number {
+  let count = 0;
+  for (const screen of group.screenFindings) {
+    count += screen.findings.length;
+  }
+  count += group.flowFindings.length;
+  count += group.missingScreens.length;
+  return count;
+}
+
 export function Results({ results, onExportToCanvas, onStartOver }: Props) {
   const { summary } = results;
   const [includePlaceholders, setIncludePlaceholders] = useState(false);
 
-  // Group missing screen findings by flow type
-  const missingByFlow = groupByFlowType(results.missing_screen_findings || []);
+  // Group all findings by flow type
+  const flowGroups = groupAllFindingsByFlow(results);
+  const hasMissingScreens = (results.missing_screen_findings || []).length > 0;
 
   // Calculate health score
   const health = calculateHealth(results);
@@ -66,75 +217,27 @@ export function Results({ results, onExportToCanvas, onStartOver }: Props) {
         <StatCard label="Info" count={summary.info} color="text-blue-700 bg-blue-50" />
       </div>
 
-      {/* Missing screens by flow */}
-      {missingByFlow.length > 0 && (
+      {/* Findings grouped by flow */}
+      {flowGroups.size > 0 && (
         <div className="flex flex-col gap-3">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            By Flow
-          </div>
-          {missingByFlow.map(([flowType, findings]) => (
-            <FlowCard key={flowType} flowType={flowType} findings={findings} />
-          ))}
-        </div>
-      )}
+          {Array.from(flowGroups.entries()).map(([flowType, group]) => {
+            const totalFindings = countFlowFindings(group);
+            if (totalFindings === 0) return null;
 
-      {/* Per-screen findings - only show screens with findings */}
-      {results.screens.filter(s => s.findings.length > 0).length > 0 && (
-        <div className="flex flex-col gap-3">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            By Screen
-          </div>
-          {results.screens
-            .filter((screen) => screen.findings.length > 0)
-            .map((screen) => (
-              <div key={screen.screen_id} className="rounded-lg border p-4">
-                <div className="flex items-center justify-between pb-3 border-b border-border">
-                  <span className="text-sm font-semibold">{screen.name}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {screen.findings.length} finding{screen.findings.length !== 1 ? "s" : ""}
-                  </span>
-                </div>
-                <div className="mt-3 flex flex-col gap-3">
-                  {screen.findings.map((finding) => (
-                    <div key={finding.id} className="flex items-start gap-3">
-                      <SeverityIcon severity={finding.severity} />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium">{finding.title}</div>
-                        {finding.description && (
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {finding.description}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-        </div>
-      )}
-
-      {/* Flow-level findings */}
-      {results.flow_findings.length > 0 && (
-        <div className="flex flex-col gap-3">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Flow-Level
-          </div>
-          {results.flow_findings.map((finding) => (
-            <div key={finding.id} className="flex items-start gap-3 rounded-lg border p-4">
-              <SeverityIcon severity={finding.severity} />
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium">{finding.title}</div>
-                <p className="text-xs text-muted-foreground mt-0.5">{finding.description}</p>
-              </div>
-            </div>
-          ))}
+            return (
+              <FlowGroupCard
+                key={flowType}
+                flowType={flowType}
+                group={group}
+              />
+            );
+          })}
         </div>
       )}
 
       {/* Actions */}
       <div className="flex flex-col pt-2">
-        {missingByFlow.length > 0 && (
+        {hasMissingScreens && (
           <label
             className="flex items-center gap-2 text-xs cursor-pointer select-none group mb-4"
             onClick={() => setIncludePlaceholders(!includePlaceholders)}
@@ -155,7 +258,7 @@ export function Results({ results, onExportToCanvas, onStartOver }: Props) {
               )}
             </span>
             <span className="text-muted-foreground">
-              Generate placeholder frames for missing screens
+              Generate missing screens
             </span>
           </label>
         )}
@@ -166,9 +269,10 @@ export function Results({ results, onExportToCanvas, onStartOver }: Props) {
           >
             Export to Canvas
           </button>
+
           <button
             onClick={onStartOver}
-            className="w-full py-2.5 px-4 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80"
+            className="w-full py-2.5 px-4 rounded-lg text-muted-foreground text-sm font-medium hover:bg-secondary/50 mt-1"
           >
             Analyze Another Flow
           </button>
@@ -178,32 +282,91 @@ export function Results({ results, onExportToCanvas, onStartOver }: Props) {
   );
 }
 
-function FlowCard({ flowType, findings }: { flowType: string; findings: MissingScreenFinding[] }) {
-  const flowName = findings[0]?.flow_name || flowType.replace(/-/g, " ");
+function FlowGroupCard({ flowType, group }: { flowType: string; group: FlowGroup }) {
+  const totalFindings = countFlowFindings(group);
+  const hasScreenFindings = group.screenFindings.length > 0;
+  const hasFlowFindings = group.flowFindings.length > 0;
+  const hasMissingScreens = group.missingScreens.length > 0;
 
   return (
     <div className="rounded-lg border p-4">
-      {/* Header: Flow name on left, count on right */}
+      {/* Flow header */}
       <div className="flex items-center justify-between pb-3 border-b border-border">
-        <span className="text-sm font-semibold">{flowName}</span>
+        <span className="text-xs font-semibold text-primary uppercase tracking-wide">
+          {formatFlowName(flowType)}
+        </span>
         <span className="text-xs text-muted-foreground">
-          {findings.length} missing screen{findings.length !== 1 ? "s" : ""}
+          {totalFindings} finding{totalFindings !== 1 ? "s" : ""}
         </span>
       </div>
 
-      {/* Findings list with severity icons */}
       <div className="mt-3 flex flex-col gap-3">
-        {findings.map((finding) => (
-          <div key={finding.id} className="flex items-start gap-3">
-            <SeverityIcon severity={finding.severity} />
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium">{finding.missing_screen.name}</div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {finding.missing_screen.description}
-              </p>
+        {/* Screen findings */}
+        {group.screenFindings.map((screen, idx) => (
+          <div key={screen.screen_id} className="flex flex-col gap-2">
+            {idx > 0 && <div className="border-t border-border -mx-4 my-1" />}
+            <div className="text-sm font-medium text-foreground">{screen.name}</div>
+            <div className="flex flex-col gap-2">
+              {screen.findings.map((finding) => (
+                <FindingItem key={finding.id} finding={finding} />
+              ))}
             </div>
           </div>
         ))}
+
+        {/* Divider before flow findings */}
+        {hasScreenFindings && hasFlowFindings && (
+          <div className="border-t border-border -mx-4 my-1" />
+        )}
+
+        {/* Flow-level findings */}
+        {hasFlowFindings && (
+          <div className="flex flex-col gap-2">
+            <div className="text-xs font-medium text-muted-foreground">Flow Issues</div>
+            {group.flowFindings.map((finding) => (
+              <FindingItem key={finding.id} finding={finding} />
+            ))}
+          </div>
+        )}
+
+        {/* Divider before missing screens */}
+        {(hasScreenFindings || hasFlowFindings) && hasMissingScreens && (
+          <div className="border-t border-border -mx-4 my-1" />
+        )}
+
+        {/* Missing screens */}
+        {hasMissingScreens && (
+          <div className="flex flex-col gap-2">
+            <div className="text-xs font-medium text-muted-foreground">Missing Screens</div>
+            {group.missingScreens.map((finding) => (
+              <div key={finding.id} className="flex items-start gap-3">
+                <SeverityIcon severity={finding.severity} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium">{finding.missing_screen.name}</div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {finding.missing_screen.description}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FindingItem({ finding }: { finding: AnalysisFinding }) {
+  return (
+    <div className="flex items-start gap-3">
+      <SeverityIcon severity={finding.severity} />
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium">{finding.title}</div>
+        {finding.description && (
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {finding.description}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -224,20 +387,6 @@ function SeverityIcon({ severity }: { severity: string }) {
       <span className={`text-xs font-bold ${text}`}>{symbol}</span>
     </div>
   );
-}
-
-function groupByFlowType(findings: MissingScreenFinding[]): [string, MissingScreenFinding[]][] {
-  const groups = new Map<string, MissingScreenFinding[]>();
-
-  for (const finding of findings) {
-    const key = finding.flow_type;
-    if (!groups.has(key)) {
-      groups.set(key, []);
-    }
-    groups.get(key)!.push(finding);
-  }
-
-  return Array.from(groups.entries());
 }
 
 function LLMBadge({ results }: { results: AnalysisOutput }) {
@@ -275,4 +424,3 @@ function StatCard({ label, count, color }: { label: string; count: number; color
     </div>
   );
 }
-

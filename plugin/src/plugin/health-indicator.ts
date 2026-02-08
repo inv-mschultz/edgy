@@ -5,6 +5,8 @@
  */
 
 import type { AnalysisFinding, AnalysisOutput, ScreenResult, MissingScreenFinding } from "../ui/lib/types";
+import { designScreen, renderGeneratedLayout, type DesignTokens, type GeneratedScreenLayout } from "./screen-designer";
+import { extractMultipleFrameContexts, mergeFrameContexts, getAllStoredContexts, type FrameContext, type MergedContext } from "./frame-context";
 
 // --- Types ---
 
@@ -91,7 +93,7 @@ export async function renderHealthIndicator(
   badge.itemSpacing = 6;
   badge.cornerRadius = 4;
   badge.fills = [{ type: "SOLID", color: COLORS.background }];
-  badge.strokes = [{ type: "SOLID", color: COLORS.border }];
+  badge.strokes = [{ type: "SOLID", color: COLORS.border, opacity: 1 }];
   badge.strokeWeight = 1;
 
   // Add shadow for depth
@@ -135,15 +137,10 @@ export async function renderHealthIndicator(
   // Store frame ID for repositioning later
   badge.setPluginData("frame-id", frame.id);
 
-  // Position badge at top-right of frame (0px right, 20px above)
+  // Position badge at top-right of frame, aligned with frame's right edge
   // Use actual badge dimensions after auto-layout computes them
-  // Badge width = paddingLeft(8) + dot(6) + spacing(6) + text + paddingRight(10)
-  const textWidth = labelText.length * 6.5; // Approximate character width
-  const badgeWidth = 8 + 6 + 6 + textWidth + 10;
-  const badgeHeight = 6 + 14 + 6; // padding + content height
-
-  badge.x = frame.x + frame.width - badgeWidth;
-  badge.y = frame.y - badgeHeight - 16;
+  badge.x = frame.x + frame.width - badge.width;
+  badge.y = frame.y - badge.height - 16;
 
   // Lock the badge to prevent accidental edits
   badge.locked = true;
@@ -152,7 +149,7 @@ export async function renderHealthIndicator(
 }
 
 /**
- * Generates a findings report frame positioned to the left of screens.
+ * Generates a findings report frame positioned to the right of screens.
  */
 export async function generateFindingsReport(
   results: AnalysisOutput,
@@ -166,8 +163,8 @@ export async function generateFindingsReport(
   );
   if (existingReport) existingReport.remove();
 
-  // Find leftmost screen position
-  const leftmostX = Math.min(...screens.map((s) => s.x));
+  // Find rightmost screen edge and top position
+  const rightmostX = Math.max(...screens.map((s) => s.x + s.width));
   const topY = Math.min(...screens.map((s) => s.y));
 
   // Create report container
@@ -184,7 +181,7 @@ export async function generateFindingsReport(
   report.itemSpacing = 16;
   report.cornerRadius = 8;
   report.fills = [{ type: "SOLID", color: COLORS.background }];
-  report.strokes = [{ type: "SOLID", color: COLORS.border }];
+  report.strokes = [{ type: "SOLID", color: COLORS.border, opacity: 1 }];
   report.strokeWeight = 1;
   report.effects = [
     {
@@ -246,110 +243,95 @@ export async function generateFindingsReport(
   divider.fills = [{ type: "SOLID", color: COLORS.border }];
   report.appendChild(divider);
 
-  // Findings by screen
-  for (const screenResult of results.screens) {
-    if (screenResult.findings.length === 0) continue;
+  // Group all findings by flow type
+  const flowGroups = groupFindingsByFlow(results);
 
-    // Create section container
-    const section = figma.createFrame();
-    section.name = `screen-${screenResult.screen_id}`;
-    section.layoutMode = "VERTICAL";
-    section.primaryAxisSizingMode = "AUTO";
-    section.itemSpacing = 12;
-    section.fills = [];
-
-    // Add section to report and set stretch BEFORE adding children
-    report.appendChild(section);
-    section.layoutAlign = "STRETCH";
-
-    // Screen title
-    const screenTitle = figma.createText();
-    screenTitle.fontName = { family: "Inter", style: "Semi Bold" };
-    screenTitle.fontSize = 14;
-    screenTitle.lineHeight = { value: 20, unit: "PIXELS" };
-    screenTitle.characters = screenResult.name;
-    screenTitle.fills = [{ type: "SOLID", color: COLORS.foreground }];
-    section.appendChild(screenTitle);
-
-    // Add findings AFTER section is stretched
-    for (const finding of screenResult.findings) {
-      const item = createFindingItem(finding);
-      section.appendChild(item);
-      // Use newer sizing properties: FILL width, HUG height
-      item.layoutSizingHorizontal = "FILL";
-      item.layoutSizingVertical = "HUG";
-    }
-  }
-
-  // Flow findings
-  if (results.flow_findings.length > 0) {
+  // Render each flow group
+  for (const [flowType, flowGroup] of flowGroups) {
+    // Create flow section
     const flowSection = figma.createFrame();
-    flowSection.name = "flow-findings";
+    flowSection.name = `flow-${flowType}`;
     flowSection.layoutMode = "VERTICAL";
     flowSection.primaryAxisSizingMode = "AUTO";
     flowSection.itemSpacing = 12;
     flowSection.fills = [];
 
-    // Add section to report and set stretch BEFORE adding children
     report.appendChild(flowSection);
     flowSection.layoutAlign = "STRETCH";
 
-    const flowTitle = figma.createText();
-    flowTitle.fontName = { family: "Inter", style: "Semi Bold" };
-    flowTitle.fontSize = 11;
-    flowTitle.characters = "FLOW-LEVEL";
-    flowTitle.fills = [{ type: "SOLID", color: COLORS.mutedForeground }];
-    flowSection.appendChild(flowTitle);
+    // Flow header
+    const flowHeader = figma.createText();
+    flowHeader.fontName = { family: "Inter", style: "Semi Bold" };
+    flowHeader.fontSize = 11;
+    flowHeader.characters = formatFlowName(flowType).toUpperCase();
+    flowHeader.fills = [{ type: "SOLID", color: COLORS.primary }];
+    flowSection.appendChild(flowHeader);
 
-    // Add findings AFTER section is stretched
-    for (const finding of results.flow_findings) {
+    // Screen findings within this flow
+    for (const screenResult of flowGroup.screenFindings) {
+      if (screenResult.findings.length === 0) continue;
+
+      // Screen title
+      const screenTitle = figma.createText();
+      screenTitle.fontName = { family: "Inter", style: "Semi Bold" };
+      screenTitle.fontSize = 14;
+      screenTitle.lineHeight = { value: 20, unit: "PIXELS" };
+      screenTitle.characters = screenResult.name;
+      screenTitle.fills = [{ type: "SOLID", color: COLORS.foreground }];
+      flowSection.appendChild(screenTitle);
+
+      // Screen findings
+      for (const finding of screenResult.findings) {
+        const item = createFindingItem(finding);
+        flowSection.appendChild(item);
+        item.layoutSizingHorizontal = "FILL";
+        item.layoutSizingVertical = "HUG";
+      }
+    }
+
+    // Flow-level findings
+    for (const finding of flowGroup.flowFindings) {
       const item = createFindingItem(finding);
       flowSection.appendChild(item);
-      // Use newer sizing properties: FILL width, HUG height
       item.layoutSizingHorizontal = "FILL";
       item.layoutSizingVertical = "HUG";
     }
-  }
 
-  // Missing screen findings
-  if (results.missing_screen_findings?.length > 0) {
-    const missingSection = figma.createFrame();
-    missingSection.name = "missing-screens";
-    missingSection.layoutMode = "VERTICAL";
-    missingSection.primaryAxisSizingMode = "AUTO";
-    missingSection.itemSpacing = 12;
-    missingSection.fills = [];
+    // Missing screens for this flow
+    if (flowGroup.missingScreens.length > 0) {
+      const missingLabel = figma.createText();
+      missingLabel.fontName = { family: "Inter", style: "Medium" };
+      missingLabel.fontSize = 11;
+      missingLabel.characters = "Missing Screens";
+      missingLabel.fills = [{ type: "SOLID", color: COLORS.mutedForeground }];
+      flowSection.appendChild(missingLabel);
 
-    // Add section to report and set stretch BEFORE adding children
-    report.appendChild(missingSection);
-    missingSection.layoutAlign = "STRETCH";
-
-    const missingTitle = figma.createText();
-    missingTitle.fontName = { family: "Inter", style: "Semi Bold" };
-    missingTitle.fontSize = 11;
-    missingTitle.characters = "MISSING SCREENS";
-    missingTitle.fills = [{ type: "SOLID", color: COLORS.mutedForeground }];
-    missingSection.appendChild(missingTitle);
-
-    // Add findings AFTER section is stretched
-    for (const finding of results.missing_screen_findings) {
-      const item = createFindingItem({
-        severity: finding.severity,
-        title: finding.missing_screen.name,
-        description: `${finding.flow_name}: ${finding.missing_screen.description}`,
-      });
-      missingSection.appendChild(item);
-      // Use newer sizing properties: FILL width, HUG height
-      item.layoutSizingHorizontal = "FILL";
-      item.layoutSizingVertical = "HUG";
+      for (const finding of flowGroup.missingScreens) {
+        const item = createFindingItem({
+          severity: finding.severity,
+          title: finding.missing_screen.name,
+          description: finding.missing_screen.description,
+        });
+        flowSection.appendChild(item);
+        item.layoutSizingHorizontal = "FILL";
+        item.layoutSizingVertical = "HUG";
+      }
     }
+
+    // Add divider between flow groups (except last one)
+    const flowDivider = figma.createFrame();
+    flowDivider.name = "flow-divider";
+    flowDivider.resize(100, 1);
+    flowDivider.layoutAlign = "STRETCH";
+    flowDivider.fills = [{ type: "SOLID", color: COLORS.border }];
+    report.appendChild(flowDivider);
   }
 
   // Add to page
   figma.currentPage.appendChild(report);
 
-  // Position: 150px to the left of leftmost screen
-  report.x = leftmostX - report.width - 150;
+  // Position: 100px to the right of rightmost screen
+  report.x = rightmostX + 100;
   report.y = topY;
 
   return report;
@@ -447,17 +429,10 @@ export function repositionAllBadges(): void {
       continue;
     }
 
-    // Get badge text to estimate width
-    const textNode = badge.findOne((n) => n.type === "TEXT" && n.name === "label") as TextNode;
-    const labelText = textNode?.characters || "";
-    const textWidth = labelText.length * 6.5;
-    const badgeWidth = 8 + 6 + 6 + textWidth + 10;
-    const badgeHeight = 6 + 14 + 6;
-
-    // Unlock, reposition, lock
+    // Unlock, reposition using actual badge dimensions, lock
     badge.locked = false;
-    badge.x = frame.x + frame.width - badgeWidth;
-    badge.y = frame.y - badgeHeight - 16;
+    badge.x = frame.x + frame.width - badge.width;
+    badge.y = frame.y - badge.height - 16;
     badge.locked = true;
   }
 }
@@ -541,7 +516,7 @@ function createFindingItem(finding: AnalysisFinding | { severity: string; title:
   item.paddingBottom = 16;
   item.cornerRadius = 8;
   item.fills = [{ type: "SOLID", color: COLORS.background }];
-  item.strokes = [{ type: "SOLID", color: COLORS.border }];
+  item.strokes = [{ type: "SOLID", color: COLORS.border, opacity: 1 }];
   item.strokeWeight = 1;
 
   // Severity icon container (fixed 32x32)
@@ -624,14 +599,500 @@ interface RGB {
   b: number;
 }
 
+// --- Flow Grouping Helpers ---
+
+interface FlowGroup {
+  screenFindings: ScreenResult[];
+  flowFindings: AnalysisFinding[];
+  missingScreens: MissingScreenFinding[];
+}
+
+/**
+ * Groups all findings by flow type for organized reporting.
+ */
+function groupFindingsByFlow(results: AnalysisOutput): Map<string, FlowGroup> {
+  const groups = new Map<string, FlowGroup>();
+
+  // Helper to get or create a flow group
+  const getGroup = (flowType: string): FlowGroup => {
+    if (!groups.has(flowType)) {
+      groups.set(flowType, {
+        screenFindings: [],
+        flowFindings: [],
+        missingScreens: [],
+      });
+    }
+    return groups.get(flowType)!;
+  };
+
+  // Group screen findings by detected flow type
+  for (const screen of results.screens) {
+    // Determine flow type from screen name or findings
+    const flowType = detectFlowTypeFromScreen(screen);
+    const group = getGroup(flowType);
+    if (screen.findings.length > 0) {
+      group.screenFindings.push(screen);
+    }
+  }
+
+  // Group flow-level findings
+  for (const finding of results.flow_findings) {
+    // Extract flow type from finding title/description
+    const flowType = detectFlowTypeFromFinding(finding);
+    const group = getGroup(flowType);
+    group.flowFindings.push(finding);
+  }
+
+  // Group missing screen findings by their explicit flow_type
+  for (const finding of results.missing_screen_findings || []) {
+    const group = getGroup(finding.flow_type);
+    group.missingScreens.push(finding);
+  }
+
+  return groups;
+}
+
+/**
+ * Detects flow type from screen name patterns.
+ */
+function detectFlowTypeFromScreen(screen: ScreenResult): string {
+  const name = screen.name.toLowerCase();
+
+  if (name.includes("login") || name.includes("signup") || name.includes("sign up") ||
+      name.includes("register") || name.includes("auth") || name.includes("password") ||
+      name.includes("forgot") || name.includes("reset") || name.includes("verify") ||
+      name.includes("2fa") || name.includes("mfa")) {
+    return "authentication";
+  }
+  if (name.includes("cart") || name.includes("checkout") || name.includes("payment") ||
+      name.includes("order") || name.includes("shipping") || name.includes("billing")) {
+    return "checkout";
+  }
+  if (name.includes("onboard") || name.includes("welcome") || name.includes("tutorial") ||
+      name.includes("intro") || name.includes("getting started") || name.includes("setup")) {
+    return "onboarding";
+  }
+  if (name.includes("search") || name.includes("filter") || name.includes("results") ||
+      name.includes("browse")) {
+    return "search";
+  }
+  if (name.includes("setting") || name.includes("preference") || name.includes("config") ||
+      name.includes("profile") || name.includes("account")) {
+    return "settings";
+  }
+  if (name.includes("upload") || name.includes("import") || name.includes("attach")) {
+    return "upload";
+  }
+  if (name.includes("create") || name.includes("edit") || name.includes("new") ||
+      name.includes("add") || name.includes("delete") || name.includes("list") ||
+      name.includes("detail") || name.includes("view")) {
+    return "crud";
+  }
+
+  return "general";
+}
+
+/**
+ * Detects flow type from finding content.
+ */
+function detectFlowTypeFromFinding(finding: AnalysisFinding): string {
+  const text = `${finding.title} ${finding.description}`.toLowerCase();
+
+  if (text.includes("login") || text.includes("auth") || text.includes("password") ||
+      text.includes("session") || text.includes("signup") || text.includes("register")) {
+    return "authentication";
+  }
+  if (text.includes("cart") || text.includes("checkout") || text.includes("payment") ||
+      text.includes("order")) {
+    return "checkout";
+  }
+  if (text.includes("onboard") || text.includes("welcome") || text.includes("tutorial")) {
+    return "onboarding";
+  }
+  if (text.includes("search") || text.includes("filter")) {
+    return "search";
+  }
+  if (text.includes("setting") || text.includes("preference")) {
+    return "settings";
+  }
+  if (text.includes("upload") || text.includes("file")) {
+    return "upload";
+  }
+
+  return "general";
+}
+
+/**
+ * Formats flow type into human-readable name.
+ */
+function formatFlowName(flowType: string): string {
+  const names: Record<string, string> = {
+    "authentication": "Authentication Flow",
+    "checkout": "Checkout Flow",
+    "onboarding": "Onboarding Flow",
+    "search": "Search Flow",
+    "settings": "Settings Flow",
+    "upload": "Upload Flow",
+    "crud": "Data Management",
+    "general": "General",
+  };
+  return names[flowType] || flowType.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
 // --- Placeholder Frame Generation ---
 
 /**
+ * Extracts design tokens from Figma styles, variables, and reference screens.
+ */
+export async function extractDesignTokens(referenceScreens: FrameNode[]): Promise<DesignTokens> {
+  // Initialize semantic colors object to collect all color roles
+  const semanticColors: DesignTokens["semanticColors"] = {};
+
+  const tokens: DesignTokens = {
+    primaryColor: { r: 0.09, g: 0.09, b: 0.09 },
+    backgroundColor: { r: 1, g: 1, b: 1 },
+    textColor: { r: 0.09, g: 0.09, b: 0.09 },
+    mutedColor: { r: 0.45, g: 0.45, b: 0.45 },
+    borderColor: { r: 0.9, g: 0.9, b: 0.9 },
+    borderRadius: 8,
+    fontFamily: "Inter",
+    baseFontSize: 14,
+    headingFontSize: 24,
+    semanticColors,
+  };
+
+  // Helper to match semantic color names
+  const matchSemanticColor = (nameLower: string, color: RGB): void => {
+    // Primary colors
+    if ((nameLower.includes("primary") && nameLower.includes("foreground")) ||
+        nameLower === "primary-foreground" || nameLower.endsWith("/primary-foreground")) {
+      semanticColors.primaryForeground = color;
+    } else if (nameLower.includes("primary") || nameLower.includes("brand")) {
+      tokens.primaryColor = color;
+      semanticColors.primary = color;
+    }
+    // Secondary colors
+    else if ((nameLower.includes("secondary") && nameLower.includes("foreground")) ||
+             nameLower === "secondary-foreground") {
+      semanticColors.secondaryForeground = color;
+    } else if (nameLower.includes("secondary")) {
+      semanticColors.secondary = color;
+    }
+    // Destructive colors
+    else if ((nameLower.includes("destructive") && nameLower.includes("foreground")) ||
+             nameLower === "destructive-foreground") {
+      semanticColors.destructiveForeground = color;
+    } else if (nameLower.includes("destructive") || nameLower.includes("danger") || nameLower.includes("error")) {
+      semanticColors.destructive = color;
+    }
+    // Muted colors
+    else if ((nameLower.includes("muted") && nameLower.includes("foreground")) ||
+             nameLower === "muted-foreground") {
+      tokens.mutedColor = color;
+      semanticColors.mutedForeground = color;
+    } else if (nameLower.includes("muted")) {
+      semanticColors.muted = color;
+    }
+    // Accent colors
+    else if ((nameLower.includes("accent") && nameLower.includes("foreground")) ||
+             nameLower === "accent-foreground") {
+      semanticColors.accentForeground = color;
+    } else if (nameLower.includes("accent")) {
+      semanticColors.accent = color;
+    }
+    // Card colors
+    else if ((nameLower.includes("card") && nameLower.includes("foreground")) ||
+             nameLower === "card-foreground") {
+      semanticColors.cardForeground = color;
+    } else if (nameLower.includes("card")) {
+      semanticColors.card = color;
+    }
+    // Background and foreground
+    else if (nameLower.includes("background") || nameLower.includes("bg") || nameLower === "surface") {
+      tokens.backgroundColor = color;
+      semanticColors.background = color;
+    } else if (nameLower.includes("foreground") || nameLower === "text") {
+      tokens.textColor = color;
+      semanticColors.foreground = color;
+    }
+    // Border and input
+    else if (nameLower.includes("border") || nameLower.includes("stroke")) {
+      tokens.borderColor = color;
+      semanticColors.border = color;
+    } else if (nameLower.includes("input")) {
+      semanticColors.input = color;
+    } else if (nameLower.includes("ring") || nameLower.includes("focus")) {
+      semanticColors.ring = color;
+    }
+    // Success colors
+    else if ((nameLower.includes("success") && nameLower.includes("foreground")) ||
+             nameLower === "success-foreground") {
+      semanticColors.successForeground = color;
+    } else if (nameLower.includes("success")) {
+      semanticColors.success = color;
+    }
+  };
+
+  // 1. Try to extract from local color styles
+  try {
+    const colorStyles = await figma.getLocalPaintStylesAsync();
+    for (const style of colorStyles) {
+      const nameLower = style.name.toLowerCase().replace(/\//g, "-");
+      const paint = style.paints[0];
+      if (paint?.type === "SOLID") {
+        matchSemanticColor(nameLower, paint.color);
+      }
+    }
+  } catch (e) {
+    // Styles not available, continue with other methods
+  }
+
+  // 2. Try to extract from local text styles
+  try {
+    const textStyles = await figma.getLocalTextStylesAsync();
+    for (const style of textStyles) {
+      const nameLower = style.name.toLowerCase();
+      if (nameLower.includes("body") || nameLower.includes("paragraph") || nameLower.includes("base")) {
+        tokens.baseFontSize = style.fontSize;
+        tokens.fontFamily = style.fontName.family;
+      } else if (nameLower.includes("heading") || nameLower.includes("title") || nameLower.includes("h1")) {
+        tokens.headingFontSize = style.fontSize;
+      }
+    }
+  } catch (e) {
+    // Text styles not available
+  }
+
+  // 3. Try to extract from variables (Figma variables API)
+  try {
+    const collections = await figma.variables.getLocalVariableCollectionsAsync();
+    if (collections && Array.isArray(collections)) {
+      // Helper to resolve variable aliases to their final value
+      const resolveVariableValue = async (
+        value: VariableValue,
+        resolvedType: string,
+        modeId: string,
+        depth: number = 0
+      ): Promise<RGB | number | null> => {
+        // Prevent infinite recursion
+        if (depth > 10) return null;
+
+        // Check if it's a variable alias
+        if (typeof value === "object" && value !== null && "type" in value && value.type === "VARIABLE_ALIAS") {
+          const aliasValue = value as { type: "VARIABLE_ALIAS"; id: string };
+          try {
+            const referencedVar = await figma.variables.getVariableByIdAsync(aliasValue.id);
+            if (referencedVar && referencedVar.valuesByMode) {
+              // Try to get value from the same mode, fall back to first available mode
+              const refValue = referencedVar.valuesByMode[modeId] ??
+                               Object.values(referencedVar.valuesByMode)[0];
+              if (refValue !== undefined) {
+                return resolveVariableValue(refValue, referencedVar.resolvedType, modeId, depth + 1);
+              }
+            }
+          } catch {
+            return null;
+          }
+        }
+
+        // Direct value
+        if (resolvedType === "COLOR" && typeof value === "object" && "r" in value) {
+          return value as RGB;
+        }
+        if (resolvedType === "FLOAT" && typeof value === "number") {
+          return value;
+        }
+
+        return null;
+      };
+
+      for (const collection of collections) {
+        if (!collection || !collection.variableIds || !collection.defaultModeId) continue;
+
+        for (const variableId of collection.variableIds) {
+          if (!variableId) continue;
+
+          try {
+            const variable = await figma.variables.getVariableByIdAsync(variableId);
+            if (!variable || !variable.valuesByMode) continue;
+
+            const nameLower = (variable.name?.toLowerCase() || "").replace(/\//g, "-");
+            const modeId = collection.defaultModeId;
+            const rawValue = variable.valuesByMode[modeId];
+
+            if (rawValue === undefined || rawValue === null) continue;
+
+            // Resolve the value (handles both direct values and aliases)
+            const resolvedValue = await resolveVariableValue(rawValue, variable.resolvedType, modeId);
+
+            if (variable.resolvedType === "COLOR" && resolvedValue && typeof resolvedValue === "object" && "r" in resolvedValue) {
+              matchSemanticColor(nameLower, resolvedValue);
+            } else if (variable.resolvedType === "FLOAT" && typeof resolvedValue === "number") {
+              if (nameLower.includes("radius") || nameLower.includes("corner")) {
+                // Cap at 32px to avoid pill-shaped frames
+                tokens.borderRadius = Math.min(resolvedValue, 32);
+              }
+            }
+          } catch (varError) {
+            // Skip this variable if it can't be accessed
+            continue;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    // Variables API not available
+  }
+
+  // 4. Check stored frame context (extracted during analysis)
+  try {
+    const storedContexts = getAllStoredContexts();
+    const contexts = Object.values(storedContexts);
+
+    if (contexts.length > 0) {
+      const merged = mergeFrameContexts(contexts);
+
+      // Use most common font family
+      if (tokens.fontFamily === "Inter" && merged.fonts.size > 0) {
+        let maxCount = 0;
+        for (const [family, info] of merged.fonts) {
+          if (info.count > maxCount) {
+            maxCount = info.count;
+            tokens.fontFamily = family;
+          }
+        }
+      }
+
+      // Use border radius from context (capped to avoid pill shapes)
+      if (tokens.borderRadius === 8 && merged.borderRadii.length > 0) {
+        tokens.borderRadius = Math.min(merged.borderRadii[0], 32); // Most common, capped
+      }
+
+      // Use colors from context (prefer fill colors)
+      if (merged.colors.size > 0) {
+        for (const [, info] of merged.colors) {
+          // Skip very light colors (likely backgrounds) for primary
+          const brightness = (info.rgb.r + info.rgb.g + info.rgb.b) / 3;
+          if (brightness < 0.9 && info.usage === "fill" && info.count > 2) {
+            tokens.primaryColor = info.rgb;
+            break;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    // Stored context not available
+  }
+
+  // 5. Fallback: analyze reference screens for resolved values
+  if (referenceScreens.length > 0) {
+    const analyzed = analyzeResolvedValues(referenceScreens);
+
+    // Only use analyzed values if we didn't find styles/variables
+    if (tokens.fontFamily === "Inter" && analyzed.fontFamily) {
+      tokens.fontFamily = analyzed.fontFamily;
+    }
+    if (tokens.baseFontSize === 14 && analyzed.baseFontSize) {
+      tokens.baseFontSize = analyzed.baseFontSize;
+    }
+    if (tokens.headingFontSize === 24 && analyzed.headingFontSize) {
+      tokens.headingFontSize = analyzed.headingFontSize;
+    }
+    if (tokens.borderRadius === 8 && analyzed.borderRadius) {
+      tokens.borderRadius = Math.min(analyzed.borderRadius, 32); // Cap to avoid pill shapes
+    }
+  }
+
+  return tokens;
+}
+
+interface AnalyzedValues {
+  fontFamily?: string;
+  baseFontSize?: number;
+  headingFontSize?: number;
+  borderRadius?: number;
+}
+
+/**
+ * Analyzes resolved values from reference screens as fallback.
+ */
+function analyzeResolvedValues(referenceScreens: FrameNode[]): AnalyzedValues {
+  const fontSizes: number[] = [];
+  const fontFamilies = new Map<string, number>();
+  const borderRadii: number[] = [];
+
+  for (const screen of referenceScreens.slice(0, 3)) {
+    analyzeNodeResolved(screen, fontSizes, fontFamilies, borderRadii);
+  }
+
+  const result: AnalyzedValues = {};
+
+  // Most common font family
+  let maxFontCount = 0;
+  for (const [family, count] of fontFamilies) {
+    if (count > maxFontCount) {
+      maxFontCount = count;
+      result.fontFamily = family;
+    }
+  }
+
+  // Font sizes
+  if (fontSizes.length > 0) {
+    fontSizes.sort((a, b) => a - b);
+    result.baseFontSize = fontSizes[Math.floor(fontSizes.length / 2)];
+    result.headingFontSize = Math.max(...fontSizes);
+  }
+
+  // Border radius
+  if (borderRadii.length > 0) {
+    borderRadii.sort((a, b) => a - b);
+    result.borderRadius = borderRadii[Math.floor(borderRadii.length / 2)];
+  }
+
+  return result;
+}
+
+function analyzeNodeResolved(
+  node: SceneNode,
+  fontSizes: number[],
+  fontFamilies: Map<string, number>,
+  borderRadii: number[]
+): void {
+  // Analyze text (using resolved/computed values)
+  if (node.type === "TEXT") {
+    const fontSize = node.fontSize;
+    if (typeof fontSize === "number") {
+      fontSizes.push(fontSize);
+    }
+    const fontName = node.fontName;
+    if (fontName && typeof fontName === "object" && "family" in fontName) {
+      const family = fontName.family;
+      fontFamilies.set(family, (fontFamilies.get(family) || 0) + 1);
+    }
+  }
+
+  // Analyze border radius (only collect reasonable values, skip pill shapes)
+  if ("cornerRadius" in node && typeof node.cornerRadius === "number" && node.cornerRadius > 0 && node.cornerRadius <= 32) {
+    borderRadii.push(node.cornerRadius);
+  }
+
+  // Recurse into children
+  if ("children" in node) {
+    for (const child of node.children) {
+      analyzeNodeResolved(child, fontSizes, fontFamilies, borderRadii);
+    }
+  }
+}
+
+/**
  * Generates placeholder frames for missing screens.
+ * Creates individual sections per flow type for better organization.
+ * If generatedLayouts is provided, uses AI-generated layouts instead of templates.
  */
 export async function generatePlaceholderFrames(
   findings: MissingScreenFinding[],
-  referenceScreens: FrameNode[]
+  referenceScreens: FrameNode[],
+  generatedLayouts?: Record<string, { name: string; width: number; height: number; backgroundColor: RGB; elements: unknown[] }>
 ): Promise<FrameNode[]> {
   await ensureFontsLoaded();
 
@@ -641,7 +1102,10 @@ export async function generatePlaceholderFrames(
     return placeholders;
   }
 
-  // Find rightmost screen to position section after
+  // Extract design tokens from Figma styles, variables, and reference screens
+  const designTokens = await extractDesignTokens(referenceScreens);
+
+  // Find rightmost screen to position sections after
   const rightmostX = Math.max(...referenceScreens.map((s) => s.x + s.width));
   const topY = Math.min(...referenceScreens.map((s) => s.y));
 
@@ -657,44 +1121,60 @@ export async function generatePlaceholderFrames(
     byFlow.get(key)!.push(finding);
   }
 
-  // Create frames with coordinates relative to section (starting at padding offset)
-  const sectionPadding = 50;
-  let localX = sectionPadding;
+  // Layout constants
+  const sectionPadding = 60;
+  const screenGap = 50;
+  const sectionGap = 80; // Gap between flow sections
+  const reportWidth = 400; // Width of the Edgy report
+  const gapAfterScreens = 100;
+  const gapAfterReport = 100;
 
-  for (const [, flowFindings] of byFlow) {
+  // Position sections after the report (which is placed after screens)
+  let currentSectionX = rightmostX + gapAfterScreens + reportWidth + gapAfterReport;
+
+  // Create individual section for each flow type
+  for (const [flowType, flowFindings] of byFlow) {
+    const section = figma.createSection();
+    section.name = `${formatFlowName(flowType)} - Suggested Screens`;
+    section.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 }, opacity: 0.1 }];
+
+    // Position section
+    section.x = currentSectionX;
+    section.y = topY;
+
+    // Calculate section width based on number of screens
+    const sectionWidth = sectionPadding * 2 + flowFindings.length * templateWidth + (flowFindings.length - 1) * screenGap;
+    const sectionHeight = templateHeight + sectionPadding * 2;
+    section.resizeWithoutConstraints(sectionWidth, sectionHeight);
+
+    // Create frames within section
+    let localX = sectionPadding;
+
     for (const finding of flowFindings) {
+      // Check if we have an AI-generated layout for this finding
+      const generatedLayout = generatedLayouts?.[finding.id];
+
+      // Create frame with design tokens applied and reference screens for component cloning
       const frame = await createPlaceholderFrame(
         finding,
         localX,
         sectionPadding,
         templateWidth,
-        templateHeight
+        templateHeight,
+        referenceScreens,
+        designTokens,
+        generatedLayout
       );
+
+      // Add frame to section
+      section.appendChild(frame);
       placeholders.push(frame);
-      localX += templateWidth + 50;
-    }
-    localX += 50; // Extra gap between flows
-  }
 
-  // Create a Section to contain all placeholder frames
-  if (placeholders.length > 0) {
-    const section = figma.createSection();
-    section.name = "Suggested Screens";
-    section.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 }, opacity: 0.1 }];
-
-    // Position section to the right of existing screens
-    section.x = rightmostX + 100;
-    section.y = topY;
-
-    // Move all placeholders into the section
-    for (const placeholder of placeholders) {
-      section.appendChild(placeholder);
+      localX += templateWidth + screenGap;
     }
 
-    // Resize section to fit content
-    const sectionWidth = localX + sectionPadding;
-    const sectionHeight = templateHeight + sectionPadding * 2;
-    section.resizeWithoutConstraints(sectionWidth, sectionHeight);
+    // Move to next section position
+    currentSectionX += sectionWidth + sectionGap;
   }
 
   return placeholders;
@@ -705,136 +1185,42 @@ async function createPlaceholderFrame(
   x: number,
   y: number,
   width: number,
-  height: number
+  height: number,
+  referenceScreens: FrameNode[],
+  designTokens?: DesignTokens,
+  generatedLayout?: GeneratedScreenLayout
 ): Promise<FrameNode> {
-  const frame = figma.createFrame();
-  frame.name = finding.missing_screen.name || "Missing Screen";
-  frame.resize(width, height);
+  let frame: FrameNode;
+
+  // Use AI-generated layout if available, otherwise fall back to template
+  if (generatedLayout) {
+    frame = await renderGeneratedLayout(generatedLayout, designTokens);
+    // Resize to match template dimensions if needed
+    if (frame.width !== width || frame.height !== height) {
+      frame.resize(width, height);
+    }
+  } else {
+    // Use the screen designer with component cloning from existing screens
+    frame = await designScreen(finding, width, height, designTokens, referenceScreens);
+  }
+
+  // Position the frame
   frame.x = x;
   frame.y = y;
-  frame.cornerRadius = 8;
-  frame.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }]; // White background
 
-  // Calculate center position
-  const centerX = width / 2;
-  let currentY = 80;
-
-  // Icon placeholder (rounded square with + symbol)
-  const iconSize = 56;
-  const iconBg = figma.createFrame();
-  iconBg.name = "icon";
-  iconBg.resize(iconSize, iconSize);
-  iconBg.cornerRadius = 12;
-  iconBg.fills = [{ type: "SOLID", color: COLORS.primary, opacity: 0.1 }];
-  iconBg.layoutMode = "HORIZONTAL";
-  iconBg.primaryAxisSizingMode = "FIXED";
-  iconBg.counterAxisSizingMode = "FIXED";
-  iconBg.primaryAxisAlignItems = "CENTER";
-  iconBg.counterAxisAlignItems = "CENTER";
-
-  const iconText = figma.createText();
-  iconText.fontName = { family: "Inter", style: "Bold" };
-  iconText.fontSize = 24;
-  iconText.characters = "+";
-  iconText.fills = [{ type: "SOLID", color: COLORS.primary }];
-  iconBg.appendChild(iconText);
-
-  iconBg.x = centerX - iconSize / 2;
-  iconBg.y = currentY;
-  frame.appendChild(iconBg);
-  currentY += iconSize + 24;
-
-  // Title
-  const title = figma.createText();
-  title.name = "title";
-  title.fontName = { family: "Inter", style: "Semi Bold" };
-  title.fontSize = 18;
-  title.characters = finding.missing_screen.name || "Missing Screen";
-  title.fills = [{ type: "SOLID", color: COLORS.foreground }];
-  title.textAlignHorizontal = "CENTER";
-  title.x = centerX - title.width / 2;
-  title.y = currentY;
-  frame.appendChild(title);
-  currentY += title.height + 12;
-
-  // Description (only add if there's content)
-  const descText = finding.missing_screen.description || "";
-  if (descText) {
-    const desc = figma.createText();
-    desc.name = "description";
-    desc.fontName = { family: "Inter", style: "Regular" };
-    desc.fontSize = 14;
-    desc.characters = descText;
-    desc.fills = [{ type: "SOLID", color: COLORS.mutedForeground }];
-    desc.textAlignHorizontal = "CENTER";
-    desc.resize(width - 48, desc.height);
-    desc.textAutoResize = "HEIGHT";
-    desc.x = 24;
-    desc.y = currentY;
-    frame.appendChild(desc);
-    currentY += desc.height + 24;
-  } else {
-    currentY += 24;
-  }
-
-  // Suggested components section
-  if (finding.recommendation.components.length > 0) {
-    const label = figma.createText();
-    label.name = "components-label";
-    label.fontName = { family: "Inter", style: "Medium" };
-    label.fontSize = 10;
-    label.characters = "SUGGESTED COMPONENTS";
-    label.fills = [{ type: "SOLID", color: COLORS.mutedForeground }];
-    label.letterSpacing = { value: 0.5, unit: "PIXELS" };
-    label.x = centerX - label.width / 2;
-    label.y = currentY;
-    frame.appendChild(label);
-    currentY += label.height + 12;
-
-    // Create component chips row (still use auto-layout for the chips container)
-    const chipsRow = figma.createFrame();
-    chipsRow.name = "chips";
-    chipsRow.layoutMode = "HORIZONTAL";
-    chipsRow.primaryAxisSizingMode = "AUTO";
-    chipsRow.counterAxisSizingMode = "AUTO";
-    chipsRow.itemSpacing = 6;
-    chipsRow.fills = [];
-
-    for (const comp of finding.recommendation.components.slice(0, 4)) {
-      const chip = figma.createFrame();
-      chip.name = comp.shadcn_id;
-      chip.layoutMode = "HORIZONTAL";
-      chip.primaryAxisSizingMode = "AUTO";
-      chip.counterAxisSizingMode = "AUTO";
-      chip.paddingLeft = 8;
-      chip.paddingRight = 8;
-      chip.paddingTop = 4;
-      chip.paddingBottom = 4;
-      chip.cornerRadius = 4;
-      chip.fills = [{ type: "SOLID", color: COLORS.background }];
-      chip.strokes = [{ type: "SOLID", color: COLORS.border }];
-      chip.strokeWeight = 1;
-
-      const chipText = figma.createText();
-      chipText.fontName = { family: "Inter", style: "Medium" };
-      chipText.fontSize = 11;
-      chipText.characters = comp.label || comp.shadcn_id || "Component";
-      chipText.fills = [{ type: "SOLID", color: COLORS.foreground }];
-      chip.appendChild(chipText);
-
-      chipsRow.appendChild(chip);
-    }
-
-    frame.appendChild(chipsRow);
-    // Center the chips row after adding to frame (so we can get its width)
-    chipsRow.x = centerX - chipsRow.width / 2;
-    chipsRow.y = currentY;
-  }
+  // Apply border radius from design tokens or default
+  // Cap at 24px max for main frames to prevent pill-shaped screens
+  const maxFrameRadius = 24;
+  const tokenRadius = designTokens?.borderRadius || 8;
+  frame.cornerRadius = Math.min(tokenRadius, maxFrameRadius);
 
   // Mark as Edgy placeholder for later identification
   frame.setPluginData("edgy-placeholder", "true");
   frame.setPluginData("flow-type", finding.flow_type);
   frame.setPluginData("screen-id", finding.missing_screen.id);
+  if (generatedLayout) {
+    frame.setPluginData("edgy-ai-generated", "true");
+  }
 
   return frame;
 }

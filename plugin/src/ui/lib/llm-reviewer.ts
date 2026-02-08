@@ -1,7 +1,7 @@
 /**
  * LLM Reviewer
  *
- * Reviews heuristic analysis findings using Claude to remove false
+ * Reviews heuristic analysis findings using Claude or Gemini to remove false
  * positives, improve descriptions, and adjust severity.
  */
 
@@ -13,6 +13,7 @@ import type {
   MissingScreenFinding,
   ExtractedNode,
   ExtractedScreen,
+  AIProvider,
 } from "./types";
 
 // --- Types ---
@@ -67,7 +68,9 @@ interface LLMRefinement {
 // --- Constants ---
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-opus-4-5-20251101";
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models";
+const CLAUDE_MODEL = "claude-sonnet-4-20250514";
+const GEMINI_MODEL = "gemini-2.0-flash";
 const MAX_TOKENS = 8192;
 
 const SYSTEM_PROMPT = `You are Edgy's AI review layer — a UX edge case analysis assistant integrated into a Figma plugin.
@@ -161,6 +164,7 @@ export async function reviewWithLLM(
   heuristicOutput: AnalysisOutput,
   input: AnalysisInput,
   apiKey: string,
+  provider: AIProvider = "claude",
   onProgress?: (message: string) => void
 ): Promise<LLMReviewResult> {
   if (heuristicOutput.summary.total_findings === 0) {
@@ -172,18 +176,25 @@ export async function reviewWithLLM(
 
     const userContent = buildUserMessage(heuristicOutput, input);
 
-    onProgress?.("Reviewing findings with AI...");
+    const providerName = provider === "claude" ? "Claude" : "Gemini";
+    onProgress?.(`Reviewing findings with ${providerName}...`);
 
-    const responseText = await callAnthropicAPI(
-      apiKey,
-      SYSTEM_PROMPT,
-      userContent
-    );
+    let responseText: string;
+    if (provider === "gemini") {
+      responseText = await callGeminiAPI(apiKey, SYSTEM_PROMPT, userContent);
+    } else {
+      responseText = await callAnthropicAPI(apiKey, SYSTEM_PROMPT, userContent);
+    }
 
     onProgress?.("Applying AI refinements...");
 
+    console.log("[edgy] Parsing LLM response...");
     const refinements = parseAndValidateResponse(responseText);
+    console.log("[edgy] Refinements parsed:", refinements.screens.length, "screens");
+
+    console.log("[edgy] Merging refinements...");
     const enhancedOutput = mergeRefinements(heuristicOutput, refinements);
+    console.log("[edgy] Merge complete, returning result");
 
     return {
       output: enhancedOutput,
@@ -210,10 +221,13 @@ function condenseNodeTree(
   const nodeMap = new Map<string, ExtractedNode>();
 
   function buildMaps(node: ExtractedNode, parentId?: string) {
+    if (!node) return;
     nodeMap.set(node.id, node);
     if (parentId) parentMap.set(node.id, parentId);
-    for (const child of node.children) {
-      buildMaps(child, node.id);
+    if (node.children && Array.isArray(node.children)) {
+      for (const child of node.children) {
+        buildMaps(child, node.id);
+      }
     }
   }
   buildMaps(rootNode);
@@ -236,7 +250,7 @@ function condenseNodeTree(
     const pid = parentMap.get(nodeId);
     if (pid) {
       const p = nodeMap.get(pid);
-      if (p) {
+      if (p && p.children && Array.isArray(p.children)) {
         for (const sibling of p.children) {
           keepIds.add(sibling.id);
         }
@@ -245,11 +259,12 @@ function condenseNodeTree(
   }
 
   function condense(node: ExtractedNode): CondensedNode | null {
-    if (!keepIds.has(node.id)) return null;
+    if (!node || !keepIds.has(node.id)) return null;
 
     const condensedChildren: CondensedNode[] = [];
     let skippedCount = 0;
-    for (const child of node.children) {
+    const children = node.children || [];
+    for (const child of children) {
       const condensedChild = condense(child);
       if (condensedChild) {
         condensedChildren.push(condensedChild);
@@ -406,14 +421,14 @@ function buildUserMessage(
   return content;
 }
 
-// --- API Call ---
+// --- API Calls ---
 
 async function callAnthropicAPI(
   apiKey: string,
   systemPrompt: string,
   userContent: AnthropicContent[]
 ): Promise<string> {
-  console.log("[edgy] Calling Anthropic API with model:", MODEL);
+  console.log("[edgy] Calling Anthropic API with model:", CLAUDE_MODEL);
 
   const response = await fetch(ANTHROPIC_API_URL, {
     method: "POST",
@@ -424,7 +439,7 @@ async function callAnthropicAPI(
       "anthropic-dangerous-direct-browser-access": "true",
     },
     body: JSON.stringify({
-      model: MODEL,
+      model: CLAUDE_MODEL,
       max_tokens: MAX_TOKENS,
       system: systemPrompt,
       messages: [
@@ -461,6 +476,86 @@ async function callAnthropicAPI(
   }
 
   return textBlock.text;
+}
+
+async function callGeminiAPI(
+  apiKey: string,
+  systemPrompt: string,
+  userContent: AnthropicContent[]
+): Promise<string> {
+  console.log("[edgy] Calling Gemini API with model:", GEMINI_MODEL);
+
+  // Convert Anthropic content format to Gemini format
+  const parts: Array<{ text: string } | { inline_data: { mime_type: string; data: string } }> = [];
+
+  for (const content of userContent) {
+    if (content.type === "text") {
+      parts.push({ text: content.text });
+    } else if (content.type === "image") {
+      parts.push({
+        inline_data: {
+          mime_type: content.source.media_type,
+          data: content.source.data,
+        },
+      });
+    }
+  }
+
+  const response = await fetch(
+    `${GEMINI_API_URL}/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        system_instruction: {
+          parts: [{ text: systemPrompt }],
+        },
+        contents: [
+          {
+            parts,
+          },
+        ],
+        generationConfig: {
+          maxOutputTokens: MAX_TOKENS,
+          temperature: 0.2,
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error("[edgy] Gemini API error:", response.status, errorBody);
+    if (response.status === 400 && errorBody.includes("API_KEY_INVALID")) {
+      throw new Error(
+        "Invalid API key. Please check your Gemini API key in settings."
+      );
+    }
+    if (response.status === 404) {
+      throw new Error(
+        `Model not found: ${GEMINI_MODEL}. The model may not exist or be available.`
+      );
+    }
+    if (response.status === 429) {
+      throw new Error(
+        "Rate limited by Gemini API. Please try again in a moment."
+      );
+    }
+    throw new Error(`Gemini API error (${response.status}): ${errorBody}`);
+  }
+
+  const data = await response.json();
+  console.log("[edgy] Gemini API response received");
+
+  const textContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!textContent) {
+    console.error("[edgy] Gemini response structure:", JSON.stringify(data, null, 2));
+    throw new Error("No text content in Gemini API response");
+  }
+
+  return textContent;
 }
 
 // --- Response Parsing ---

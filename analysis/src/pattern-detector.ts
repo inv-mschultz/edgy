@@ -162,9 +162,12 @@ export function detectPatterns(rootNode: ExtractedNode): DetectedPattern[] {
 }
 
 function flattenTree(node: ExtractedNode): ExtractedNode[] {
+  if (!node) return [];
   const result: ExtractedNode[] = [node];
-  for (const child of node.children) {
-    result.push(...flattenTree(child));
+  if (node.children && Array.isArray(node.children)) {
+    for (const child of node.children) {
+      result.push(...flattenTree(child));
+    }
   }
   return result;
 }
@@ -197,7 +200,7 @@ function isButton(node: ExtractedNode): boolean {
 
   // Only match action keywords on leaf-ish nodes (INSTANCE, TEXT, or small FRAME),
   // not top-level screen frames
-  if (node.type === "FRAME" && node.children.length > 2) return false;
+  if (node.type === "FRAME" && node.children && node.children.length > 2) return false;
 
   return /\b(submit|save|send|confirm|sign.?in|log.?in|register|sign.?up|cancel|close|next|previous|back|continue|done|apply|add|create|update|edit|go|ok|accept|decline|reject)\b/i.test(node.name);
 }
@@ -269,8 +272,9 @@ function detectLists(allNodes: ExtractedNode[], rootNode: ExtractedNode): Detect
 
   // Method 2: Look for parent nodes with 3+ similar children (repeating pattern)
   for (const node of allNodes) {
-    if (node.children.length >= 3) {
-      const childTypes = node.children.map(
+    const children = node.children || [];
+    if (children.length >= 3) {
+      const childTypes = children.map(
         (c) => c.componentName || c.type
       );
       const mostCommon = mode(childTypes);
