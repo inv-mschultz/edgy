@@ -43,8 +43,8 @@ export function HealthGauge({ health, animate = true }: HealthGaugeProps) {
   }, [health, animate]);
 
   // SVG parameters
-  const size = 240;
-  const strokeWidth = 24;
+  const size = 200;
+  const strokeWidth = 20;
   const radius = (size - strokeWidth) / 2;
   const center = size / 2;
 
@@ -59,40 +59,30 @@ export function HealthGauge({ health, animate = true }: HealthGaugeProps) {
 
   return (
     <div className="flex flex-col items-center">
-      <div className="relative" style={{ width: size, height: size / 2 + 20 }}>
+      <div className="relative" style={{ width: size, height: size / 2 + 30 }}>
         <svg
           width={size}
-          height={size / 2 + 20}
-          viewBox={`0 0 ${size} ${size / 2 + 20}`}
+          height={size / 2 + 30}
+          viewBox={`0 0 ${size} ${size / 2 + 30}`}
           className="overflow-visible"
         >
           <defs>
-            {/* Background gradient (subtle gray) */}
+            {/* Background gradient (light gray) */}
             <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#e8eaed" />
-              <stop offset="50%" stopColor="#e0e4e8" />
-              <stop offset="100%" stopColor="#e8e6ed" />
+              <stop offset="0%" stopColor="#E5E7EB" />
+              <stop offset="100%" stopColor="#E5E7EB" />
             </linearGradient>
 
-            {/* Progress gradient (green -> teal -> blue -> purple -> orange) */}
+            {/* Progress gradient (purple to pink) */}
             <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#6b9b7a" />
-              <stop offset="30%" stopColor="#7fb8a8" />
-              <stop offset="50%" stopColor="#8badd4" />
-              <stop offset="70%" stopColor="#9a9bd4" />
-              <stop offset="100%" stopColor="#c9a86c" />
+              <stop offset="0%" stopColor="#4A1A6B" />
+              <stop offset="50%" stopColor="#A855F7" />
+              <stop offset="100%" stopColor="#C084FC" />
             </linearGradient>
-
-            {/* Inner shadow for depth */}
-            <filter id="innerShadow" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="blur" />
-              <feOffset in="blur" dx="0" dy="2" result="offsetBlur" />
-              <feComposite in="SourceGraphic" in2="offsetBlur" operator="over" />
-            </filter>
 
             {/* Glow for the marker */}
             <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+              <feGaussianBlur stdDeviation="2" result="coloredBlur" />
               <feMerge>
                 <feMergeNode in="coloredBlur" />
                 <feMergeNode in="SourceGraphic" />
@@ -127,7 +117,7 @@ export function HealthGauge({ health, animate = true }: HealthGaugeProps) {
           <circle
             cx={markerX}
             cy={markerY}
-            r={14}
+            r={12}
             fill="white"
             filter="url(#glow)"
             style={{
@@ -140,8 +130,8 @@ export function HealthGauge({ health, animate = true }: HealthGaugeProps) {
           <circle
             cx={markerX}
             cy={markerY}
-            r={8}
-            fill="#4a4a8a"
+            r={6}
+            fill="#4A1A6B"
             style={{
               opacity: animatedProgress > 0 ? 1 : 0,
               transition: "opacity 0.3s",
@@ -151,18 +141,18 @@ export function HealthGauge({ health, animate = true }: HealthGaugeProps) {
 
         {/* Center text */}
         <div
-          className="absolute inset-0 flex flex-col items-center justify-end pb-2"
-          style={{ paddingBottom: 8 }}
+          className="absolute inset-0 flex flex-col items-center justify-end"
+          style={{ paddingBottom: 12 }}
         >
           <span
-            className="text-4xl font-bold"
-            style={{ color: "#3a3a7a" }}
+            className="text-3xl font-bold"
+            style={{ color: '#4A1A6B' }}
           >
-            {displayHealth}%
+            {displayHealth}<span className="text-xl">%</span>
           </span>
           <span
             className="text-xs font-medium"
-            style={{ color: "#5a5a8a" }}
+            style={{ color: '#6B7280' }}
           >
             Edge cases covered
           </span>

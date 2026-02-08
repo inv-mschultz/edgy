@@ -5,23 +5,33 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    --foreground: 270 30% 25%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --primary: 262 83% 58%;
-    --primary-foreground: 0 0% 98%;
+    --card-foreground: 270 30% 25%;
+    --primary: 270 60% 45%;
+    --primary-foreground: 0 0% 100%;
     --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
+    --secondary-foreground: 270 30% 25%;
     --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
+    --muted-foreground: 270 10% 45%;
     --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
+    --accent-foreground: 270 30% 25%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
     --border: 240 5.9% 90%;
     --input: 240 5.9% 90%;
-    --ring: 262 83% 58%;
+    --ring: 270 60% 45%;
     --radius: 0.5rem;
+
+    /* Brand colors */
+    --brand-purple: 276 60% 26%;
+    --brand-gold: 40 65% 56%;
+    --brand-cream: 42 100% 95%;
+
+    /* Severity colors */
+    --severity-critical: 0 72% 51%;
+    --severity-warning: 38 92% 50%;
+    --severity-info: 217 91% 60%;
   }
 }
 
@@ -31,7 +41,7 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    font-family: "IBM Plex Sans Condensed", system-ui, -apple-system, sans-serif;
     margin: 0;
     padding: 0;
   }

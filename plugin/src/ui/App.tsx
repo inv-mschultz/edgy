@@ -492,6 +492,7 @@ export function App() {
           includeNavigation: true,
           imageBasedFallback: true,
           projectName: extractionData.file_name || "prototype",
+          exportMode: "nextjs", // Use new shadcn-based export
         },
       };
 
@@ -564,6 +565,7 @@ export function App() {
           includeNavigation: true,
           imageBasedFallback: true,
           projectName: extractionData.file_name || "prototype",
+          exportMode: "nextjs", // Use new shadcn-based export
         },
       };
 
@@ -625,14 +627,17 @@ export function App() {
   return (
     <div className="flex flex-col h-screen overflow-hidden">
       {/* Navigation */}
-      <nav className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b bg-background">
+      <nav
+        className="flex-shrink-0 flex items-center justify-between px-4 py-3"
+        style={{ backgroundColor: '#4A1A6B' }}
+      >
         {page === "settings" ? (
           <>
-            <span className="text-sm font-semibold">Settings</span>
+            <span className="text-sm font-semibold text-white">Settings</span>
             <button
               onClick={() => setPage("select")}
               type="button"
-              className="p-1.5 rounded border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              className="p-1.5 rounded text-white/70 hover:text-white hover:bg-white/10 transition-colors"
               style={{ borderRadius: 4 }}
               title="Close"
             >
@@ -641,11 +646,11 @@ export function App() {
           </>
         ) : page === "info" ? (
           <>
-            <span className="text-sm font-semibold">About Edgy</span>
+            <span className="text-sm font-semibold text-white">About Edgy</span>
             <button
               onClick={() => setPage("select")}
               type="button"
-              className="p-1.5 rounded border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              className="p-1.5 rounded text-white/70 hover:text-white hover:bg-white/10 transition-colors"
               style={{ borderRadius: 4 }}
               title="Close"
             >
@@ -655,13 +660,13 @@ export function App() {
         ) : (
           <>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-bold text-primary">EDGY</span>
-              <span className="text-xs text-muted-foreground">Find missing edge cases</span>
+              <span className="text-sm font-bold" style={{ color: '#F5C542' }}>EDGY</span>
+              <span className="text-xs text-white/80">User Flow Analyser</span>
             </div>
             <button
               onClick={handleOpenSettings}
               type="button"
-              className="p-1.5 rounded border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              className="p-1.5 rounded text-white/70 hover:text-white hover:bg-white/10 transition-colors"
               style={{ borderRadius: 4 }}
               title="Settings"
             >
@@ -873,13 +878,17 @@ export function App() {
 
       {/* Sticky analyze button - only on select page */}
       {page === "select" && (
-        <div className="flex-shrink-0 p-4 pt-2 border-t bg-background">
+        <div className="flex-shrink-0 p-4 pt-2 bg-background">
           <button
             onClick={handleAnalyze}
             disabled={screens.length === 0}
-            className="w-full py-2.5 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-3 px-6 rounded-full text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              backgroundColor: screens.length === 0 ? '#E5E7EB' : '#4A1A6B',
+              color: screens.length === 0 ? '#9CA3AF' : 'white',
+            }}
           >
-            Analyze {screens.length} Screen{screens.length !== 1 ? "s" : ""}
+            {screens.length === 0 ? "Select frames" : `Analyse ${screens.length} frame${screens.length !== 1 ? "s" : ""}`}
           </button>
         </div>
       )}
@@ -887,17 +896,20 @@ export function App() {
       {/* Footer - sticky at bottom */}
       <footer className="flex-shrink-0 relative flex items-center justify-between px-4 py-2 border-t bg-background">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
+          <span
+            className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+            style={{ backgroundColor: '#F3F4F6', color: '#6B7280' }}
+          >
             v {__APP_VERSION__}
           </span>
-          <span className="text-[10px] text-muted-foreground">
-            Made by Team Edgy with &lt;3
+          <span className="text-[10px]" style={{ color: '#6B7280' }}>
+            Made by Team EDGY with &lt;3
           </span>
         </div>
         <button
           onClick={handleOpenInfo}
-          className="p-1.5 border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-          style={{ borderRadius: 4 }}
+          className="p-1.5 border rounded transition-colors"
+          style={{ borderColor: '#E5E7EB', color: '#6B7280' }}
           title="Info"
         >
           <InfoIcon className="w-3.5 h-3.5" />
@@ -909,7 +921,7 @@ export function App() {
           title="Resize"
           onMouseDown={handleResizeMouseDown}
         >
-          <svg viewBox="0 0 10 10" fill="currentColor" className="text-muted-foreground">
+          <svg viewBox="0 0 10 10" fill="currentColor" style={{ color: '#9CA3AF' }}>
             <path d="M0 10L10 0V10H0Z" />
           </svg>
         </div>

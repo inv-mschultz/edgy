@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import type { AnalysisOutput, MissingScreenFinding, ScreenResult, AnalysisFinding } from "../lib/types";
-import { Sparkles, AlertTriangle } from "lucide-react";
+import { Sparkles, AlertTriangle, X, Info as InfoIcon } from "lucide-react";
 import { HealthGauge } from "../components/HealthGauge";
 
 interface Props {
@@ -200,26 +200,59 @@ export function Results({ results, onExportToCanvas, onStartOver }: Props) {
   // Calculate health score
   const health = calculateHealth(results);
 
+  // Total findings count
+  const totalFindings = summary.critical + summary.warning + summary.info;
+  const screenCount = results.screens.length;
+
   return (
     <div className="flex flex-col gap-4 p-4">
       {/* Health Gauge */}
       <div className="flex flex-col items-center py-2">
         <HealthGauge health={health} />
-        <div className="flex items-center gap-2 mt-3">
+        <div className="flex items-center gap-2 mt-2">
           <LLMBadge results={results} />
         </div>
       </div>
 
-      {/* Stat cards - using accessible colors */}
-      <div className="grid grid-cols-3 gap-2">
-        <StatCard label="Critical" count={summary.critical} color="text-red-700 bg-red-50" />
-        <StatCard label="Warning" count={summary.warning} color="text-amber-700 bg-amber-50" />
-        <StatCard label="Info" count={summary.info} color="text-blue-700 bg-blue-50" />
+      {/* Summary text */}
+      <div className="text-center">
+        <span className="text-sm font-semibold" style={{ color: '#4A1A6B' }}>
+          {totalFindings} edge case{totalFindings !== 1 ? 's' : ''} across {screenCount} screen{screenCount !== 1 ? 's' : ''}
+        </span>
+      </div>
+
+      {/* Severity cards - full width colored bars */}
+      <div className="flex flex-col gap-2">
+        <SeverityCard
+          icon={<X className="w-5 h-5" strokeWidth={3} />}
+          count={summary.critical}
+          label="essential changes"
+          bgColor="#FEE2E2"
+          textColor="#991B1B"
+          iconColor="#DC2626"
+        />
+        <SeverityCard
+          icon={<AlertTriangle className="w-5 h-5" />}
+          count={summary.warning}
+          label="advisable changes"
+          bgColor="#FEF3C7"
+          textColor="#92400E"
+          iconColor="#D97706"
+        />
+        <SeverityCard
+          icon={<InfoIcon className="w-5 h-5" />}
+          count={summary.info}
+          label="optional change"
+          bgColor="#DBEAFE"
+          textColor="#1E40AF"
+          iconColor="#2563EB"
+        />
       </div>
 
       {/* Findings grouped by flow */}
       {flowGroups.size > 0 && (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 mt-2">
+          <h3 className="text-sm font-semibold" style={{ color: '#4A1A6B' }}>By flow</h3>
           {Array.from(flowGroups.entries()).map(([flowType, group]) => {
             const totalFindings = countFlowFindings(group);
             if (totalFindings === 0) return null;
@@ -239,42 +272,48 @@ export function Results({ results, onExportToCanvas, onStartOver }: Props) {
       <div className="flex flex-col pt-2">
         {hasMissingScreens && (
           <label
-            className="flex items-center gap-2 text-xs cursor-pointer select-none group mb-4"
+            className="flex items-center gap-2 text-sm cursor-pointer select-none group mb-4"
             onClick={() => setIncludePlaceholders(!includePlaceholders)}
           >
             <span
               className={`
-                flex items-center justify-center w-4 h-4 rounded transition-colors shrink-0
+                flex items-center justify-center w-5 h-5 rounded transition-colors shrink-0 border-2
                 ${includePlaceholders
-                  ? 'bg-primary'
-                  : 'bg-background border border-border group-hover:border-muted-foreground'
+                  ? 'bg-primary border-primary'
+                  : 'bg-white border-gray-300 group-hover:border-gray-400'
                 }
               `}
             >
               {includePlaceholders && (
-                <svg className="w-3 h-3 text-primary-foreground" viewBox="0 0 12 12" fill="none">
-                  <path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none">
+                  <path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               )}
             </span>
             <span className="text-muted-foreground">
-              Generate missing screens
+              Generate placeholder for missing screens
             </span>
           </label>
         )}
         <div className="flex flex-col gap-2">
           <button
             onClick={() => onExportToCanvas(includePlaceholders)}
-            className="w-full py-2.5 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
+            className="w-full py-3 px-6 rounded-full text-sm font-semibold transition-all"
+            style={{ backgroundColor: '#4A1A6B', color: 'white' }}
           >
-            Export to Canvas
+            Export to canvas
           </button>
 
           <button
             onClick={onStartOver}
-            className="w-full py-2.5 px-4 rounded-lg text-muted-foreground text-sm font-medium hover:bg-secondary/50 mt-1"
+            className="w-full py-3 px-6 rounded-full text-sm font-semibold transition-all border-2"
+            style={{
+              backgroundColor: '#FEF3C7',
+              borderColor: '#FEF3C7',
+              color: '#4A1A6B'
+            }}
           >
-            Analyze Another Flow
+            Analyse another flow
           </button>
         </div>
       </div>
@@ -282,21 +321,45 @@ export function Results({ results, onExportToCanvas, onStartOver }: Props) {
   );
 }
 
+function SeverityCard({
+  icon,
+  count,
+  label,
+  bgColor,
+  textColor,
+  iconColor
+}: {
+  icon: React.ReactNode;
+  count: number;
+  label: string;
+  bgColor: string;
+  textColor: string;
+  iconColor: string;
+}) {
+  return (
+    <div
+      className="flex items-center gap-3 px-4 py-3 rounded-lg"
+      style={{ backgroundColor: bgColor }}
+    >
+      <span style={{ color: iconColor }}>{icon}</span>
+      <span className="text-sm font-semibold" style={{ color: textColor }}>
+        {count} {label}
+      </span>
+    </div>
+  );
+}
+
 function FlowGroupCard({ flowType, group }: { flowType: string; group: FlowGroup }) {
-  const totalFindings = countFlowFindings(group);
   const hasScreenFindings = group.screenFindings.length > 0;
   const hasFlowFindings = group.flowFindings.length > 0;
   const hasMissingScreens = group.missingScreens.length > 0;
 
   return (
-    <div className="rounded-lg border p-4">
+    <div className="rounded-lg border bg-white p-4 shadow-sm">
       {/* Flow header */}
-      <div className="flex items-center justify-between pb-3 border-b border-border">
-        <span className="text-xs font-semibold text-primary uppercase tracking-wide">
-          {formatFlowName(flowType)}
-        </span>
-        <span className="text-xs text-muted-foreground">
-          {totalFindings} finding{totalFindings !== 1 ? "s" : ""}
+      <div className="pb-2 border-b border-gray-100">
+        <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#4A1A6B' }}>
+          {formatFlowName(flowType)} Flow
         </span>
       </div>
 
@@ -304,11 +367,10 @@ function FlowGroupCard({ flowType, group }: { flowType: string; group: FlowGroup
         {/* Screen findings */}
         {group.screenFindings.map((screen, idx) => (
           <div key={screen.screen_id} className="flex flex-col gap-2">
-            {idx > 0 && <div className="border-t border-border -mx-4 my-1" />}
-            <div className="text-sm font-medium text-foreground">{screen.name}</div>
+            {idx > 0 && <div className="border-t border-gray-100 -mx-4 my-1" />}
             <div className="flex flex-col gap-2">
               {screen.findings.map((finding) => (
-                <FindingItem key={finding.id} finding={finding} />
+                <FindingItem key={finding.id} finding={finding} screenName={screen.name} />
               ))}
             </div>
           </div>
@@ -316,13 +378,12 @@ function FlowGroupCard({ flowType, group }: { flowType: string; group: FlowGroup
 
         {/* Divider before flow findings */}
         {hasScreenFindings && hasFlowFindings && (
-          <div className="border-t border-border -mx-4 my-1" />
+          <div className="border-t border-gray-100 -mx-4 my-1" />
         )}
 
         {/* Flow-level findings */}
         {hasFlowFindings && (
           <div className="flex flex-col gap-2">
-            <div className="text-xs font-medium text-muted-foreground">Flow Issues</div>
             {group.flowFindings.map((finding) => (
               <FindingItem key={finding.id} finding={finding} />
             ))}
@@ -331,18 +392,19 @@ function FlowGroupCard({ flowType, group }: { flowType: string; group: FlowGroup
 
         {/* Divider before missing screens */}
         {(hasScreenFindings || hasFlowFindings) && hasMissingScreens && (
-          <div className="border-t border-border -mx-4 my-1" />
+          <div className="border-t border-gray-100 -mx-4 my-1" />
         )}
 
         {/* Missing screens */}
         {hasMissingScreens && (
           <div className="flex flex-col gap-2">
-            <div className="text-xs font-medium text-muted-foreground">Missing Screens</div>
             {group.missingScreens.map((finding) => (
               <div key={finding.id} className="flex items-start gap-3">
                 <SeverityIcon severity={finding.severity} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium">{finding.missing_screen.name}</div>
+                  <div className="text-sm font-semibold" style={{ color: '#4A1A6B' }}>
+                    {finding.missing_screen.name}
+                  </div>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {finding.missing_screen.description}
                   </p>
@@ -356,35 +418,45 @@ function FlowGroupCard({ flowType, group }: { flowType: string; group: FlowGroup
   );
 }
 
-function FindingItem({ finding }: { finding: AnalysisFinding }) {
+function FindingItem({ finding, screenName }: { finding: AnalysisFinding; screenName?: string }) {
   return (
     <div className="flex items-start gap-3">
       <SeverityIcon severity={finding.severity} />
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium">{finding.title}</div>
-        {finding.description && (
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {finding.description}
-          </p>
-        )}
+        <div className="text-sm font-semibold" style={{ color: '#4A1A6B' }}>
+          {screenName || finding.title}
+        </div>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          {screenName ? finding.title : finding.description}
+        </p>
       </div>
     </div>
   );
 }
 
 function SeverityIcon({ severity }: { severity: string }) {
-  const config: Record<string, { bg: string; text: string; symbol: string }> = {
-    critical: { bg: "bg-red-50", text: "text-red-700", symbol: "×" },
-    warning: { bg: "bg-amber-50", text: "text-amber-700", symbol: "!" },
-    info: { bg: "bg-blue-50", text: "text-blue-700", symbol: "i" },
+  const config: Record<string, { bg: string; icon: React.ReactNode }> = {
+    critical: {
+      bg: "#FEE2E2",
+      icon: <X className="w-3.5 h-3.5" strokeWidth={3} style={{ color: '#DC2626' }} />
+    },
+    warning: {
+      bg: "#FEF3C7",
+      icon: <AlertTriangle className="w-3.5 h-3.5" style={{ color: '#D97706' }} />
+    },
+    info: {
+      bg: "#DBEAFE",
+      icon: <InfoIcon className="w-3.5 h-3.5" style={{ color: '#2563EB' }} />
+    },
   };
-  const { bg, text, symbol } = config[severity] || config.info;
+  const { bg, icon } = config[severity] || config.info;
 
   return (
     <div
-      className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${bg}`}
+      className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
+      style={{ backgroundColor: bg }}
     >
-      <span className={`text-xs font-bold ${text}`}>{symbol}</span>
+      {icon}
     </div>
   );
 }
@@ -394,7 +466,10 @@ function LLMBadge({ results }: { results: AnalysisOutput }) {
 
   if (results.llm_enhanced) {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-violet-100 text-violet-700">
+      <span
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
+        style={{ backgroundColor: '#EDE9FE', color: '#6D28D9' }}
+      >
         <Sparkles className="w-3 h-3" />
         AI-enhanced
       </span>
@@ -403,7 +478,10 @@ function LLMBadge({ results }: { results: AnalysisOutput }) {
 
   return (
     <div className="flex flex-col gap-1">
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-yellow-100 text-yellow-700">
+      <span
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
+        style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}
+      >
         <AlertTriangle className="w-3 h-3" />
         Heuristic only
       </span>
@@ -412,15 +490,6 @@ function LLMBadge({ results }: { results: AnalysisOutput }) {
           {results.llm_error}
         </span>
       )}
-    </div>
-  );
-}
-
-function StatCard({ label, count, color }: { label: string; count: number; color: string }) {
-  return (
-    <div className={`rounded-lg p-3 text-center ${color}`}>
-      <div className="text-2xl font-bold">{count}</div>
-      <div className="text-xs font-medium">{label}</div>
     </div>
   );
 }

@@ -55,18 +55,21 @@ export function Analyzing({ steps, screenCount }: Props) {
   const progress = ((completedSteps + inProgressSteps * 0.5) / steps.length) * 100;
 
   return (
-    <div className="flex flex-col items-center px-6 py-10">
+    <div className="flex flex-col items-center px-6 py-8">
       <div className="w-full max-w-sm">
         {/* Title */}
-        <h2 className="text-lg font-semibold text-primary text-center mb-6">
+        <h2 className="text-lg font-semibold text-center mb-6" style={{ color: '#4A1A6B' }}>
           Analysing your frames...
         </h2>
 
         {/* Progress bar */}
-        <div className="w-full h-2 bg-secondary rounded-full mb-10 overflow-hidden">
+        <div className="w-full h-2 bg-gray-200 rounded-full mb-8 overflow-hidden">
           <div
-            className="h-full bg-primary rounded-full transition-all duration-500 ease-out"
-            style={{ width: `${progress}%` }}
+            className="h-full rounded-full transition-all duration-500 ease-out"
+            style={{
+              width: `${progress}%`,
+              background: 'linear-gradient(90deg, #4A1A6B 0%, #6B2D8A 100%)'
+            }}
           />
         </div>
 
@@ -78,13 +81,19 @@ export function Analyzing({ steps, screenCount }: Props) {
                 {/* Status indicator */}
                 <div className="flex-shrink-0 w-6 flex justify-center">
                   {step.status === "complete" ? (
-                    <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center animate-scale-in">
-                      <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />
+                    <div
+                      className="w-5 h-5 rounded-full flex items-center justify-center animate-scale-in"
+                      style={{ backgroundColor: '#22C55E' }}
+                    >
+                      <Check className="w-3 h-3 text-white" strokeWidth={3} />
                     </div>
                   ) : step.status === "in-progress" ? (
-                    <div className="w-3 h-3 rounded-full bg-primary animate-pulse" />
+                    <div
+                      className="w-3 h-3 rounded-full animate-pulse"
+                      style={{ backgroundColor: '#4A1A6B' }}
+                    />
                   ) : (
-                    <div className="w-2 h-2 rounded-full bg-muted-foreground/30" />
+                    <div className="w-2 h-2 rounded-full bg-gray-300" />
                   )}
                 </div>
 
@@ -92,11 +101,14 @@ export function Analyzing({ steps, screenCount }: Props) {
                 <span
                   className={`text-sm transition-all duration-300 ${
                     step.status === "complete"
-                      ? "text-foreground font-medium"
+                      ? "font-medium"
                       : step.status === "in-progress"
-                      ? "text-foreground font-semibold"
-                      : "text-muted-foreground/50"
+                      ? "font-semibold"
+                      : "text-gray-400"
                   }`}
+                  style={{
+                    color: step.status === "pending" ? '#9CA3AF' : '#4A1A6B'
+                  }}
                 >
                   {step.label}
                   {step.status === "in-progress" && "..."}
@@ -116,17 +128,25 @@ export function Analyzing({ steps, screenCount }: Props) {
                           key={`${index}-${offset}`}
                           className={`text-xs transition-all duration-200 flex items-center gap-2 ${
                             isTransitioning ? "opacity-0 -translate-y-1" : "opacity-100 translate-y-0"
-                          } ${
-                            isFirst
-                              ? "text-muted-foreground"
-                              : isSecond
-                              ? "text-muted-foreground/60"
-                              : "text-muted-foreground/30"
                           }`}
+                          style={{
+                            color: isFirst
+                              ? '#6B7280'
+                              : isSecond
+                              ? '#9CA3AF'
+                              : '#D1D5DB'
+                          }}
                         >
-                          <span className={`w-1 h-1 rounded-full ${
-                            isFirst ? "bg-primary" : isSecond ? "bg-muted-foreground/40" : "bg-muted-foreground/20"
-                          }`} />
+                          <span
+                            className="w-1 h-1 rounded-full"
+                            style={{
+                              backgroundColor: isFirst
+                                ? '#4A1A6B'
+                                : isSecond
+                                ? '#9CA3AF'
+                                : '#D1D5DB'
+                            }}
+                          />
                           {AI_REVIEW_MESSAGES[index]}
                         </div>
                       );
@@ -141,3 +161,4 @@ export function Analyzing({ steps, screenCount }: Props) {
     </div>
   );
 }
+
