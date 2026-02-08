@@ -54,6 +54,9 @@ export async function discoverComponents(): Promise<ComponentLibrary> {
     icons: [],
   };
 
+  // Load all pages first (required for findAllWithCriteria with dynamic page access)
+  await figma.loadAllPagesAsync();
+
   // Get local components
   const localComponents = figma.root.findAllWithCriteria({
     types: ["COMPONENT"],
