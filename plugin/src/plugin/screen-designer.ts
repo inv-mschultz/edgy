@@ -604,7 +604,55 @@ async function createInputFromAnalysis(
 }
 
 /**
+ * Try to clone a toggle/switch from existing screens, or instantiate from component library.
+ * Toggles are preferred for boolean on/off decisions.
+ */
+async function createToggleFromAnalysis(
+  context: DesignContext,
+  label: string,
+  enabled: boolean = false
+): Promise<SceneNode> {
+  const { analysis, componentLibrary } = context;
+
+  // Try to clone from existing screens (look for toggles in checkboxes array since they share the role)
+  if (analysis && analysis.instances.checkboxes.length > 0) {
+    // Prefer components with "toggle" or "switch" in the name
+    const toggleInstance = analysis.instances.checkboxes.find(
+      (c) => c.componentName.toLowerCase().includes("toggle") ||
+             c.componentName.toLowerCase().includes("switch")
+    );
+    if (toggleInstance) {
+      try {
+        return await cloneInstance(toggleInstance, { "*": label, "label": label });
+      } catch (e) {
+        console.warn("[edgy] Failed to clone toggle:", e);
+      }
+    }
+  }
+
+  // Try to instantiate from component library - try toggle first
+  if (componentLibrary) {
+    const toggleComponent = findBestComponent(componentLibrary, "toggle");
+    if (toggleComponent) {
+      try {
+        const instance = await createComponentInstance(toggleComponent.key);
+        if (instance) {
+          await applyTextToInstance(instance, label);
+          return instance;
+        }
+      } catch (e) {
+        console.warn("[edgy] Failed to instantiate toggle component:", e);
+      }
+    }
+  }
+
+  // Fallback to created toggle
+  return createToggle(label, enabled);
+}
+
+/**
  * Try to clone a checkbox from existing screens, or instantiate from component library.
+ * For boolean on/off states, consider using createToggleFromAnalysis instead.
  */
 async function createCheckboxFromAnalysis(
   context: DesignContext,
@@ -614,10 +662,14 @@ async function createCheckboxFromAnalysis(
 
   // Try to clone from existing screens
   if (analysis && analysis.instances.checkboxes.length > 0) {
-    const bestCheckbox = findBestInstance(analysis.instances.checkboxes);
-    if (bestCheckbox) {
+    // Find actual checkboxes (not toggles)
+    const checkboxInstance = analysis.instances.checkboxes.find(
+      (c) => !c.componentName.toLowerCase().includes("toggle") &&
+             !c.componentName.toLowerCase().includes("switch")
+    );
+    if (checkboxInstance) {
       try {
-        return await cloneInstance(bestCheckbox, { "*": label, "label": label });
+        return await cloneInstance(checkboxInstance, { "*": label, "label": label });
       } catch (e) {
         console.warn("[edgy] Failed to clone checkbox:", e);
       }
@@ -1136,14 +1188,14 @@ async function designPreferencesScreenEnhanced(frame: FrameNode, context: Design
   options.x = centerX - contentWidth / 2;
   options.y = y;
 
-  // Preference options
-  const option1 = await createCheckboxFromAnalysis(context, "Receive personalized recommendations");
+  // Preference options (use toggles for on/off settings)
+  const option1 = await createToggleFromAnalysis(context, "Receive personalized recommendations", true);
   options.appendChild(option1);
 
-  const option2 = await createCheckboxFromAnalysis(context, "Enable dark mode");
+  const option2 = await createToggleFromAnalysis(context, "Enable dark mode", false);
   options.appendChild(option2);
 
-  const option3 = await createCheckboxFromAnalysis(context, "Show activity status");
+  const option3 = await createToggleFromAnalysis(context, "Show activity status", true);
   options.appendChild(option3);
 
   frame.appendChild(options);
@@ -1199,13 +1251,14 @@ async function designNotificationSetupScreenEnhanced(frame: FrameNode, context: 
   options.x = centerX - contentWidth / 2;
   options.y = y;
 
-  const option1 = await createCheckboxFromAnalysis(context, "Push notifications");
+  // Notification toggles
+  const option1 = await createToggleFromAnalysis(context, "Push notifications", true);
   options.appendChild(option1);
 
-  const option2 = await createCheckboxFromAnalysis(context, "Email updates");
+  const option2 = await createToggleFromAnalysis(context, "Email updates", true);
   options.appendChild(option2);
 
-  const option3 = await createCheckboxFromAnalysis(context, "Weekly digest");
+  const option3 = await createToggleFromAnalysis(context, "Weekly digest", false);
   options.appendChild(option3);
 
   frame.appendChild(options);
@@ -1365,7 +1418,12 @@ async function designGenericScreenEnhanced(
           comp.variant as any || "primary"
         );
         form.appendChild(btn);
-      } else if (compId.includes("checkbox") || compId.includes("switch")) {
+      } else if (compId.includes("toggle") || compId.includes("switch")) {
+        // Use toggle for on/off switches
+        const toggle = await createToggleFromAnalysis(context, comp.name);
+        form.appendChild(toggle);
+      } else if (compId.includes("checkbox")) {
+        // Use checkbox for multi-select or consent options
         const checkbox = await createCheckboxFromAnalysis(context, comp.name);
         form.appendChild(checkbox);
       } else if (compId.includes("alert")) {
@@ -4233,6 +4291,41 @@ function createCheckbox(label: string): FrameNode {
 
   const labelText = createText(label, 14, "Regular", COLORS.foreground);
   container.appendChild(labelText);
+
+  return container;
+}
+
+function createToggle(label: string, enabled: boolean = false): FrameNode {
+  const container = figma.createFrame();
+  container.name = "toggle";
+  container.layoutMode = "HORIZONTAL";
+  container.primaryAxisSizingMode = "AUTO";
+  container.counterAxisSizingMode = "AUTO";
+  container.itemSpacing = 12;
+  container.counterAxisAlignItems = "CENTER";
+  container.fills = [];
+
+  // Label on the left
+  const labelText = createText(label, 14, "Regular", COLORS.foreground);
+  container.appendChild(labelText);
+
+  // Toggle track
+  const track = figma.createFrame();
+  track.name = "toggle-track";
+  track.resize(44, 24);
+  track.cornerRadius = 12;
+  track.fills = [{ type: "SOLID", color: enabled ? COLORS.primary : COLORS.muted }];
+
+  // Toggle thumb
+  const thumb = figma.createEllipse();
+  thumb.name = "toggle-thumb";
+  thumb.resize(20, 20);
+  thumb.x = enabled ? 22 : 2;
+  thumb.y = 2;
+  thumb.fills = [{ type: "SOLID", color: COLORS.background }];
+  track.appendChild(thumb);
+
+  container.appendChild(track);
 
   return container;
 }

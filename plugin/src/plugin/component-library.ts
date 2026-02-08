@@ -35,6 +35,7 @@ export interface ComponentLibrary {
   inputs: DiscoveredComponent[];
   cards: DiscoveredComponent[];
   checkboxes: DiscoveredComponent[];
+  toggles: DiscoveredComponent[]; // Switches/toggles for boolean states
   icons: DiscoveredComponent[];
 }
 
@@ -51,6 +52,7 @@ export async function discoverComponents(): Promise<ComponentLibrary> {
     inputs: [],
     cards: [],
     checkboxes: [],
+    toggles: [],
     icons: [],
   };
 
@@ -111,6 +113,8 @@ export async function discoverComponents(): Promise<ComponentLibrary> {
   console.log(`[edgy] - Buttons: ${library.buttons.length}`);
   console.log(`[edgy] - Inputs: ${library.inputs.length}`);
   console.log(`[edgy] - Cards: ${library.cards.length}`);
+  console.log(`[edgy] - Toggles: ${library.toggles.length}`);
+  console.log(`[edgy] - Checkboxes: ${library.checkboxes.length}`);
 
   return library;
 }
@@ -172,7 +176,10 @@ function addToLibrary(library: ComponentLibrary, comp: DiscoveredComponent): voi
   if (nameLower.includes("card") || nameLower.includes("container") || nameLower.includes("panel")) {
     library.cards.push(comp);
   }
-  if (nameLower.includes("checkbox") || nameLower.includes("check box") || nameLower.includes("check-box") || nameLower.includes("toggle")) {
+  // Separate toggles/switches from checkboxes
+  if (nameLower.includes("toggle") || nameLower.includes("switch")) {
+    library.toggles.push(comp);
+  } else if (nameLower.includes("checkbox") || nameLower.includes("check box") || nameLower.includes("check-box")) {
     library.checkboxes.push(comp);
   }
   if (nameLower.includes("icon") || nameLower.includes("icn")) {
@@ -205,7 +212,7 @@ export async function createComponentInstance(
  */
 export function findBestComponent(
   library: ComponentLibrary,
-  type: "button" | "input" | "card" | "checkbox" | "icon",
+  type: "button" | "input" | "card" | "checkbox" | "toggle" | "icon",
   variant?: string
 ): DiscoveredComponent | null {
   let candidates: DiscoveredComponent[];
@@ -222,6 +229,9 @@ export function findBestComponent(
       break;
     case "checkbox":
       candidates = library.checkboxes;
+      break;
+    case "toggle":
+      candidates = library.toggles;
       break;
     case "icon":
       candidates = library.icons;
