@@ -367,7 +367,8 @@ export async function designScreen(
       ACTIVE_PADDING = analysis.patterns.paddings[0];
     }
     if (analysis.patterns.gaps[0]) {
-      ACTIVE_GAP = analysis.patterns.gaps[0];
+      // Ensure minimum gap of 12px for proper visual separation
+      ACTIVE_GAP = Math.max(analysis.patterns.gaps[0], 12);
     }
     if (analysis.patterns.contentWidths[0]) {
       ACTIVE_CONTENT_WIDTH = Math.min(analysis.patterns.contentWidths[0], width - 48);
@@ -751,18 +752,21 @@ async function createButtonFromAnalysis(
 
   // Fallback to created button, using extracted colors if available
   console.log(`[edgy] Falling back to hardcoded button for "${variant}"`);
-  const colorOverrides: ButtonColorOverrides | undefined = bestButton
-    ? {
-        bgColor: bestButton.fillColor,
-        textColor: bestButton.textColor,
-      }
-    : undefined;
 
   // Map variants for fallback creation
   let fallbackVariant: "primary" | "outline" | "destructive" | "ghost" = "primary";
   if (variant === "secondary" || variant === "outline") fallbackVariant = "outline";
   else if (variant === "destructive") fallbackVariant = "destructive";
   else if (variant === "ghost" || variant === "link") fallbackVariant = "ghost";
+
+  // Don't use color overrides for destructive buttons - use the semantic destructive color
+  const colorOverrides: ButtonColorOverrides | undefined =
+    (bestButton && fallbackVariant !== "destructive")
+      ? {
+          bgColor: bestButton.fillColor,
+          textColor: bestButton.textColor,
+        }
+      : undefined;
 
   return createButton(label, fallbackVariant, buttonWidth, colorOverrides);
 }
@@ -880,8 +884,8 @@ function wrapInputWithLabel(input: SceneNode, label: string, width: number): Fra
   container.layoutMode = "VERTICAL";
   container.primaryAxisSizingMode = "AUTO";
   container.counterAxisSizingMode = "FIXED";
-  container.resize(width, 10); // Height will auto-adjust
-  container.itemSpacing = 6;
+  container.resize(width, 1); // Width fixed, height will auto-adjust from AUTO sizing
+  container.itemSpacing = 8;
   container.fills = [];
   container.cornerRadius = 0;
 
@@ -1107,6 +1111,66 @@ async function createButtonGroup(
   }
 
   return group;
+}
+
+/**
+ * Creates a bottom-pinned button container for buttons at the bottom of the screen.
+ * Properly aligns buttons with consistent padding and spacing.
+ */
+async function createBottomButtonContainer(
+  frame: FrameNode,
+  context: DesignContext,
+  primaryLabel: string,
+  secondaryLabel?: string,
+  options?: {
+    primaryVariant?: "primary" | "destructive";
+    secondaryVariant?: "secondary" | "outline" | "ghost" | "link";
+  }
+): Promise<void> {
+  const { padding, contentWidth, centerX, height, gap } = context;
+  const bottomPadding = padding;
+  const buttonGap = Math.max(gap, 12);
+
+  // Create container for bottom buttons
+  const container = figma.createFrame();
+  container.name = "Bottom Buttons";
+  container.layoutMode = "VERTICAL";
+  container.primaryAxisSizingMode = "AUTO";
+  container.counterAxisSizingMode = "FIXED";
+  container.resize(contentWidth, 10);
+  container.itemSpacing = buttonGap;
+  container.fills = [];
+  container.cornerRadius = 0;
+
+  // Primary button
+  const primaryBtn = await createButtonFromAnalysis(
+    context,
+    primaryLabel,
+    options?.primaryVariant || "primary"
+  );
+  if ("layoutAlign" in primaryBtn) {
+    (primaryBtn as FrameNode).layoutAlign = "STRETCH";
+  }
+  container.appendChild(primaryBtn);
+
+  // Secondary button if provided
+  if (secondaryLabel) {
+    const secondaryBtn = await createButtonFromAnalysis(
+      context,
+      secondaryLabel,
+      options?.secondaryVariant || "secondary"
+    );
+    if ("layoutAlign" in secondaryBtn) {
+      (secondaryBtn as FrameNode).layoutAlign = "STRETCH";
+    }
+    container.appendChild(secondaryBtn);
+  }
+
+  // Position at bottom of screen
+  container.x = centerX - contentWidth / 2;
+  container.y = height - container.height - bottomPadding;
+
+  frame.appendChild(container);
 }
 
 /**
@@ -3767,9 +3831,9 @@ function createLogoPlaceholder(): FrameNode {
  * Creates a content placeholder with a light grey background and centered label.
  * Use this instead of grey boxes for content areas.
  */
-function createContentPlaceholder(width: number, height: number, label: string = "Content Placeholder"): FrameNode {
+function createContentPlaceholder(width: number, height: number, label: string = ""): FrameNode {
   const container = figma.createFrame();
-  container.name = "content-placeholder";
+  container.name = label || "content-placeholder";
   container.resize(width, height);
   container.cornerRadius = BORDER_RADIUS;
   // Light grey background (lighter than muted)
@@ -3786,9 +3850,7 @@ function createContentPlaceholder(width: number, height: number, label: string =
   container.primaryAxisSizingMode = "FIXED";
   container.counterAxisSizingMode = "FIXED";
 
-  // Add label text
-  const text = createText(label, 12, "Medium", COLORS.mutedForeground);
-  container.appendChild(text);
+  // No text labels for illustration placeholders - keep them clean
 
   return container;
 }

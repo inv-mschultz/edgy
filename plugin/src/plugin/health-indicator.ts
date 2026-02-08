@@ -1121,7 +1121,8 @@ function analyzeNodeResolved(
 export async function generatePlaceholderFrames(
   findings: MissingScreenFinding[],
   referenceScreens: FrameNode[],
-  generatedLayouts?: Record<string, { name: string; width: number; height: number; backgroundColor: RGB; elements: unknown[] }>
+  generatedLayouts?: Record<string, { name: string; width: number; height: number; backgroundColor: RGB; elements: unknown[] }>,
+  onProgress?: (currentIndex: number, totalCount: number, screenName: string) => void
 ): Promise<FrameNode[]> {
   await ensureFontsLoaded();
 
@@ -1161,6 +1162,10 @@ export async function generatePlaceholderFrames(
   // Position sections after the report (which is placed after screens)
   let currentSectionX = rightmostX + gapAfterScreens + reportWidth + gapAfterReport;
 
+  // Track overall progress across all flow groups
+  let currentScreenIndex = 0;
+  const totalScreens = findings.length;
+
   // Create individual section for each flow type
   for (const [flowType, flowFindings] of byFlow) {
     const section = figma.createSection();
@@ -1180,6 +1185,12 @@ export async function generatePlaceholderFrames(
     let localX = sectionPadding;
 
     for (const finding of flowFindings) {
+      // Report progress before creating each screen
+      currentScreenIndex++;
+      if (onProgress) {
+        onProgress(currentScreenIndex, totalScreens, finding.missing_screen.name);
+      }
+
       // Check if we have an AI-generated layout for this finding
       const generatedLayout = generatedLayouts?.[finding.id];
 
@@ -1237,11 +1248,8 @@ async function createPlaceholderFrame(
   frame.x = x;
   frame.y = y;
 
-  // Apply border radius from design tokens or default
-  // Cap at 24px max for main frames to prevent pill-shaped screens
-  const maxFrameRadius = 24;
-  const tokenRadius = designTokens?.borderRadius || 8;
-  frame.cornerRadius = Math.min(tokenRadius, maxFrameRadius);
+  // Screen frames should have no border radius for proper mobile app appearance
+  frame.cornerRadius = 0;
 
   // Mark as Edgy placeholder for later identification
   frame.setPluginData("edgy-placeholder", "true");
