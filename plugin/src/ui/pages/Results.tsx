@@ -1,11 +1,42 @@
 import React, { useState } from "react";
 import type { AnalysisOutput, MissingScreenFinding, FlowType } from "../lib/types";
 import { Sparkles, AlertTriangle } from "lucide-react";
+import { HealthGauge } from "../components/HealthGauge";
 
 interface Props {
   results: AnalysisOutput;
   onExportToCanvas: (includePlaceholders: boolean) => void;
   onStartOver: () => void;
+}
+
+/**
+ * Calculate health score from 0-100 based on findings.
+ * Starts at 100 and deducts points based on severity.
+ */
+function calculateHealth(results: AnalysisOutput): number {
+  let health = 100;
+
+  // Deduct for screen findings
+  health -= results.summary.critical * 15;
+  health -= results.summary.warning * 8;
+  health -= results.summary.info * 3;
+
+  // Deduct for missing screens
+  const missingScreens = results.missing_screen_findings || [];
+  for (const finding of missingScreens) {
+    if (finding.severity === "critical") health -= 10;
+    else if (finding.severity === "warning") health -= 5;
+    else health -= 2;
+  }
+
+  // Deduct for flow-level findings
+  for (const finding of results.flow_findings) {
+    if (finding.severity === "critical") health -= 12;
+    else if (finding.severity === "warning") health -= 6;
+    else health -= 2;
+  }
+
+  return Math.max(0, Math.min(100, Math.round(health)));
 }
 
 export function Results({ results, onExportToCanvas, onStartOver }: Props) {
@@ -15,18 +46,17 @@ export function Results({ results, onExportToCanvas, onStartOver }: Props) {
   // Group missing screen findings by flow type
   const missingByFlow = groupByFlowType(results.missing_screen_findings || []);
 
+  // Calculate health score
+  const health = calculateHealth(results);
+
   return (
     <div className="flex flex-col gap-4 p-4">
-      {/* Summary */}
-      <div>
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold">Analysis Complete</h2>
+      {/* Health Gauge */}
+      <div className="flex flex-col items-center py-2">
+        <HealthGauge health={health} />
+        <div className="flex items-center gap-2 mt-3">
           <LLMBadge results={results} />
         </div>
-        <p className="text-sm text-muted-foreground mt-1">
-          Found {summary.total_findings} edge case{summary.total_findings !== 1 ? "s" : ""} across{" "}
-          {summary.screens_analyzed} screen{summary.screens_analyzed !== 1 ? "s" : ""}.
-        </p>
       </div>
 
       {/* Stat cards - using accessible colors */}
