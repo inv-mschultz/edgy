@@ -304,6 +304,9 @@ function condenseNodeTree(
 
 // --- Message Construction ---
 
+// Maximum screenshots to include in a single request to avoid rate limits
+const MAX_SCREENSHOTS_PER_REQUEST = 5;
+
 function buildUserMessage(
   heuristicOutput: AnalysisOutput,
   input: AnalysisInput
@@ -314,6 +317,8 @@ function buildUserMessage(
     type: "text",
     text: `I've run Edgy's heuristic analysis on ${input.screens.length} screen(s) from "${input.file_name}". Below are the screen thumbnails, findings, and relevant node tree context. Please review each finding.\n`,
   });
+
+  let screenshotCount = 0;
 
   for (const screen of input.screens) {
     const screenResult = heuristicOutput.screens.find(
@@ -327,8 +332,8 @@ function buildUserMessage(
       text: `\n--- Screen: "${screen.name}" (ID: ${screen.screen_id}) ---\n`,
     });
 
-    // Thumbnail
-    if (screen.thumbnail_base64) {
+    // Thumbnail (limit to MAX_SCREENSHOTS_PER_REQUEST to avoid rate limits)
+    if (screen.thumbnail_base64 && screenshotCount < MAX_SCREENSHOTS_PER_REQUEST) {
       const isJpeg = screen.thumbnail_base64.startsWith("data:image/jpeg");
       const base64Data = screen.thumbnail_base64.replace(
         /^data:image\/(jpeg|png);base64,/,
@@ -341,6 +346,13 @@ function buildUserMessage(
           media_type: isJpeg ? "image/jpeg" : "image/png",
           data: base64Data,
         },
+      });
+      screenshotCount++;
+    } else if (screen.thumbnail_base64) {
+      // Add note that screenshot was omitted
+      content.push({
+        type: "text",
+        text: "(Screenshot omitted to avoid rate limits)\n",
       });
     }
 

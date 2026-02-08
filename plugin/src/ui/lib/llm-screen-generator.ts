@@ -127,7 +127,10 @@ const CLAUDE_MODEL = "claude-sonnet-4-20250514";
 const GEMINI_MODEL = "gemini-2.0-flash";
 const MAX_TOKENS = 4096;
 // Maximum concurrent LLM requests to avoid rate limiting
-const MAX_CONCURRENT_REQUESTS = 3;
+// Process requests sequentially to avoid rate limits
+const MAX_CONCURRENT_REQUESTS = 1;
+// Delay between requests in milliseconds
+const REQUEST_DELAY_MS = 1000;
 
 // --- System Prompt ---
 
@@ -404,6 +407,11 @@ export async function generateScreensBatch(
     for (const { screenId, result } of batchResults) {
       results.set(screenId, result);
     }
+
+    // Add delay between batches to avoid rate limiting
+    if (batches.indexOf(batch) < batches.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, REQUEST_DELAY_MS));
+    }
   }
 
   return results;
@@ -411,8 +419,8 @@ export async function generateScreensBatch(
 
 // --- Build User Message ---
 
-// Maximum screenshots to send to LLM (balance between context and API limits)
-const MAX_REFERENCE_SCREENSHOTS = 8;
+// Maximum screenshots to send to LLM (reduced to avoid rate limits)
+const MAX_REFERENCE_SCREENSHOTS = 4;
 
 function buildUserMessage(request: ScreenGenerationRequest): AnthropicContent[] {
   const content: AnthropicContent[] = [];
