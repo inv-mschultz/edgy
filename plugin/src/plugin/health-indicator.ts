@@ -5,7 +5,7 @@
  */
 
 import type { AnalysisFinding, AnalysisOutput, ScreenResult, MissingScreenFinding } from "../ui/lib/types";
-import { designScreen, renderGeneratedLayout, type DesignTokens, type GeneratedScreenLayout } from "./screen-designer";
+import { designScreen, renderGeneratedLayout, getOrDiscoverComponents, getOrAnalyzeScreens, type DesignTokens, type GeneratedScreenLayout } from "./screen-designer";
 import { extractMultipleFrameContexts, mergeFrameContexts, getAllStoredContexts, type FrameContext, type MergedContext } from "./frame-context";
 
 // --- Types ---
@@ -1124,13 +1124,21 @@ export async function generatePlaceholderFrames(
   generatedLayouts?: Record<string, { name: string; width: number; height: number; backgroundColor: RGB; elements: unknown[] }>,
   onProgress?: (currentIndex: number, totalCount: number, screenName: string) => void
 ): Promise<FrameNode[]> {
-  await ensureFontsLoaded();
-
   const placeholders: FrameNode[] = [];
 
   if (findings.length === 0 || referenceScreens.length === 0) {
     return placeholders;
   }
+
+  // Pre-warm all caches in parallel for faster screen generation
+  // This happens once upfront instead of lazily during each screen creation
+  const startTime = Date.now();
+  await Promise.all([
+    ensureFontsLoaded(),
+    getOrDiscoverComponents(),
+    getOrAnalyzeScreens(referenceScreens),
+  ]);
+  console.log(`[edgy] Cache pre-warm completed in ${Date.now() - startTime}ms`);
 
   // Extract design tokens from Figma styles, variables, and reference screens
   const designTokens = await extractDesignTokens(referenceScreens);

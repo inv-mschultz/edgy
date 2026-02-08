@@ -98,25 +98,31 @@ export async function discoverComponents(): Promise<ComponentLibrary> {
   }
 
   // Also scan for used remote components (from team libraries)
-  const instances = figma.root.findAllWithCriteria({
+  // Limit to current page for performance - remote components used elsewhere aren't relevant
+  const instances = figma.currentPage.findAllWithCriteria({
     types: ["INSTANCE"],
   }) as InstanceNode[];
 
   const processedRemoteKeys = new Set<string>();
+  const BATCH_SIZE = 10;
 
-  for (const instance of instances) {
-    try {
-      const mainComponent = await instance.getMainComponentAsync();
-      if (mainComponent && mainComponent.remote && !processedRemoteKeys.has(mainComponent.key)) {
-        processedRemoteKeys.add(mainComponent.key);
-        const discovered = await processComponent(mainComponent, true);
-        if (discovered) {
-          addToLibrary(library, discovered);
+  // Process instances in batches for better performance
+  for (let i = 0; i < instances.length; i += BATCH_SIZE) {
+    const batch = instances.slice(i, i + BATCH_SIZE);
+    await Promise.all(batch.map(async (instance) => {
+      try {
+        const mainComponent = await instance.getMainComponentAsync();
+        if (mainComponent && mainComponent.remote && !processedRemoteKeys.has(mainComponent.key)) {
+          processedRemoteKeys.add(mainComponent.key);
+          const discovered = await processComponent(mainComponent, true);
+          if (discovered) {
+            addToLibrary(library, discovered);
+          }
         }
+      } catch {
+        // Component not accessible
       }
-    } catch {
-      // Component not accessible
-    }
+    }));
   }
 
   // Log component SET counts (not variant counts)
@@ -206,15 +212,26 @@ function addToLibrary(library: ComponentLibrary, comp: DiscoveredComponent): voi
 
 // --- Instantiation ---
 
+// Cache imported components to avoid repeated async imports
+const importedComponentCache = new Map<string, ComponentNode>();
+
 /**
  * Creates an instance of a component by key.
+ * Uses a cache to avoid reimporting the same component multiple times.
  */
 export async function createComponentInstance(
   key: string
 ): Promise<InstanceNode | null> {
   try {
-    // Try to import the component by key
-    const component = await figma.importComponentByKeyAsync(key);
+    // Check cache first
+    let component = importedComponentCache.get(key);
+    if (!component) {
+      // Import and cache the component
+      component = await figma.importComponentByKeyAsync(key);
+      if (component) {
+        importedComponentCache.set(key, component);
+      }
+    }
     if (component) {
       return component.createInstance();
     }

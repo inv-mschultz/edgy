@@ -265,7 +265,11 @@ function applyDesignTokens(tokens?: DesignTokens): void {
 
 let componentLibraryCache: ComponentLibrary | null = null;
 
-async function getOrDiscoverComponents(): Promise<ComponentLibrary> {
+/**
+ * Get or discover component library with caching.
+ * Call this upfront to pre-warm the cache before generating multiple screens.
+ */
+export async function getOrDiscoverComponents(): Promise<ComponentLibrary> {
   if (!componentLibraryCache) {
     console.log("[edgy] Discovering components...");
     componentLibraryCache = await discoverComponents();
@@ -309,6 +313,21 @@ export async function getOrAnalyzeScreens(frames: FrameNode[]): Promise<ScreenAn
 export function clearScreenAnalysisCache(): void {
   screenAnalysisCache = null;
   analyzedFrameIds.clear();
+}
+
+/**
+ * Clear the component library cache (call when components change).
+ */
+export function clearComponentLibraryCache(): void {
+  componentLibraryCache = null;
+}
+
+/**
+ * Clear all caches (call when starting fresh or switching files).
+ */
+export function clearAllCaches(): void {
+  clearScreenAnalysisCache();
+  clearComponentLibraryCache();
 }
 
 // --- Font Loading ---
