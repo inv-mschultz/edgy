@@ -15,6 +15,7 @@ import { renderComponentStack } from "./component-renderer";
 import {
   discoverComponents,
   findBestComponent,
+  createComponentInstance,
   type ComponentLibrary,
 } from "./component-library";
 import {
@@ -285,10 +286,14 @@ export async function designScreen(
   // Generate smart labels for this screen
   const labels = generateSmartLabels(finding.missing_screen.name, finding.flow_type);
 
+  // Discover component library for instantiating design system components
+  const componentLibrary = await getOrDiscoverComponents();
+
   const frame = figma.createFrame();
   frame.name = finding.missing_screen.name || "Screen";
   frame.resize(width, height);
   frame.fills = [{ type: "SOLID", color: COLORS.background }];
+  frame.cornerRadius = 0; // Screen frames should have no border radius
 
   const screenId = finding.missing_screen.id.toLowerCase();
   const flowType = finding.flow_type.toLowerCase();
@@ -296,6 +301,7 @@ export async function designScreen(
   // Create design context for enhanced rendering
   const context: DesignContext = {
     analysis,
+    componentLibrary,
     labels,
     width,
     height,
@@ -338,6 +344,7 @@ let ACTIVE_CONTENT_WIDTH: number | null = null;
 
 interface DesignContext {
   analysis: ScreenAnalysis | null;
+  componentLibrary: ComponentLibrary | null;
   labels: ReturnType<typeof generateSmartLabels>;
   width: number;
   height: number;
@@ -350,7 +357,8 @@ interface DesignContext {
 // --- Enhanced Design Functions (with component cloning) ---
 
 /**
- * Try to clone a button from existing screens, or create a fallback.
+ * Try to clone a button from existing screens, or instantiate from component library.
+ * Falls back to raw frame creation only if both methods fail.
  */
 async function createButtonFromAnalysis(
   context: DesignContext,
@@ -358,16 +366,16 @@ async function createButtonFromAnalysis(
   variant: "primary" | "secondary" | "outline" | "destructive" = "primary",
   width?: number
 ): Promise<SceneNode> {
-  const { analysis, contentWidth } = context;
+  const { analysis, componentLibrary, contentWidth } = context;
   const buttonWidth = width || contentWidth;
 
-  // Find the best matching button from analysis
+  // Find the best matching button from analysis (cloned instances)
   let bestButton: ReturnType<typeof findBestInstance> = null;
   if (analysis && analysis.instances.buttons.length > 0) {
     bestButton = findBestInstance(analysis.instances.buttons, variant);
   }
 
-  // Try to clone from existing screens
+  // Try to clone from existing screens first
   if (bestButton) {
     try {
       const clone = await cloneInstance(bestButton, { "*": label, "label": label, "text": label });
@@ -377,7 +385,29 @@ async function createButtonFromAnalysis(
       }
       return clone;
     } catch (e) {
-      console.warn("[edgy] Failed to clone button, using fallback:", e);
+      console.warn("[edgy] Failed to clone button instance:", e);
+    }
+  }
+
+  // Try to instantiate from component library (main components)
+  if (componentLibrary) {
+    const variantName = variant === "secondary" ? "outline" : variant;
+    const bestComponent = findBestComponent(componentLibrary, "button", variantName);
+    if (bestComponent) {
+      try {
+        const instance = await createComponentInstance(bestComponent.key);
+        if (instance) {
+          // Apply text override
+          await applyTextToInstance(instance, label);
+          // Resize if needed
+          if (Math.abs(instance.width - buttonWidth) > 20) {
+            instance.resize(buttonWidth, instance.height);
+          }
+          return instance;
+        }
+      } catch (e) {
+        console.warn("[edgy] Failed to instantiate button component:", e);
+      }
     }
   }
 
@@ -393,7 +423,26 @@ async function createButtonFromAnalysis(
 }
 
 /**
- * Try to clone an input from existing screens, or create a fallback.
+ * Apply text to a component instance by finding and updating text nodes.
+ */
+async function applyTextToInstance(instance: InstanceNode, text: string): Promise<void> {
+  const textNodes = instance.findAll((n) => n.type === "TEXT") as TextNode[];
+  for (const textNode of textNodes) {
+    try {
+      const fontName = textNode.fontName;
+      if (fontName !== figma.mixed) {
+        await figma.loadFontAsync(fontName);
+      }
+      textNode.characters = text;
+      return; // Only update the first text node (usually the label)
+    } catch (e) {
+      console.warn("[edgy] Failed to apply text to instance:", e);
+    }
+  }
+}
+
+/**
+ * Try to clone an input from existing screens, or instantiate from component library.
  */
 async function createInputFromAnalysis(
   context: DesignContext,
@@ -401,7 +450,7 @@ async function createInputFromAnalysis(
   placeholder: string,
   width?: number
 ): Promise<SceneNode> {
-  const { analysis, contentWidth } = context;
+  const { analysis, componentLibrary, contentWidth } = context;
   const inputWidth = width || contentWidth;
 
   // Try to clone from existing screens
@@ -420,7 +469,26 @@ async function createInputFromAnalysis(
         }
         return clone;
       } catch (e) {
-        console.warn("[edgy] Failed to clone input, using fallback:", e);
+        console.warn("[edgy] Failed to clone input:", e);
+      }
+    }
+  }
+
+  // Try to instantiate from component library
+  if (componentLibrary) {
+    const bestComponent = findBestComponent(componentLibrary, "input");
+    if (bestComponent) {
+      try {
+        const instance = await createComponentInstance(bestComponent.key);
+        if (instance) {
+          await applyTextToInstance(instance, placeholder);
+          if (Math.abs(instance.width - inputWidth) > 20) {
+            instance.resize(inputWidth, instance.height);
+          }
+          return instance;
+        }
+      } catch (e) {
+        console.warn("[edgy] Failed to instantiate input component:", e);
       }
     }
   }
@@ -430,21 +498,38 @@ async function createInputFromAnalysis(
 }
 
 /**
- * Try to clone a checkbox from existing screens, or create a fallback.
+ * Try to clone a checkbox from existing screens, or instantiate from component library.
  */
 async function createCheckboxFromAnalysis(
   context: DesignContext,
   label: string
 ): Promise<SceneNode> {
-  const { analysis } = context;
+  const { analysis, componentLibrary } = context;
 
+  // Try to clone from existing screens
   if (analysis && analysis.instances.checkboxes.length > 0) {
     const bestCheckbox = findBestInstance(analysis.instances.checkboxes);
     if (bestCheckbox) {
       try {
         return await cloneInstance(bestCheckbox, { "*": label, "label": label });
       } catch (e) {
-        console.warn("[edgy] Failed to clone checkbox, using fallback:", e);
+        console.warn("[edgy] Failed to clone checkbox:", e);
+      }
+    }
+  }
+
+  // Try to instantiate from component library
+  if (componentLibrary) {
+    const bestComponent = findBestComponent(componentLibrary, "checkbox");
+    if (bestComponent) {
+      try {
+        const instance = await createComponentInstance(bestComponent.key);
+        if (instance) {
+          await applyTextToInstance(instance, label);
+          return instance;
+        }
+      } catch (e) {
+        console.warn("[edgy] Failed to instantiate checkbox component:", e);
       }
     }
   }
@@ -812,11 +897,8 @@ async function designWelcomeScreenEnhanced(frame: FrameNode, context: DesignCont
   const contentY = height / 2 - 100;
 
   // Welcome illustration placeholder
-  const illustration = figma.createFrame();
+  const illustration = createContentPlaceholder(200, 200, "Illustration");
   illustration.name = "Illustration";
-  illustration.resize(200, 200);
-  illustration.cornerRadius = 16;
-  illustration.fills = [{ type: "SOLID", color: COLORS.muted }];
   illustration.x = centerX - 100;
   illustration.y = contentY - 120;
   frame.appendChild(illustration);
@@ -1099,11 +1181,8 @@ async function designGenericOnboardingScreenEnhanced(
   }
 
   // Content placeholder
-  const content = figma.createFrame();
+  const content = createContentPlaceholder(contentWidth, 200, "Content Placeholder");
   content.name = "Content";
-  content.resize(contentWidth, 200);
-  content.cornerRadius = BORDER_RADIUS;
-  content.fills = [{ type: "SOLID", color: COLORS.muted }];
   content.x = centerX - contentWidth / 2;
   content.y = y;
   frame.appendChild(content);
@@ -2994,14 +3073,9 @@ async function designEmptyStateScreen(frame: FrameNode, contentWidth: number, ce
   let y = height / 2 - 100;
 
   // Empty state illustration (placeholder)
-  const illustration = figma.createFrame();
+  const illustration = createContentPlaceholder(120, 120, "");
   illustration.name = "illustration";
-  illustration.resize(120, 120);
-  illustration.cornerRadius = 60;
-  illustration.fills = [{ type: "SOLID", color: COLORS.muted }];
-  illustration.layoutMode = "HORIZONTAL";
-  illustration.primaryAxisAlignItems = "CENTER";
-  illustration.counterAxisAlignItems = "CENTER";
+  illustration.cornerRadius = 60; // Circle for empty state
 
   const emptyIcon = createPlaceholderIcon(48, COLORS.mutedForeground, "square");
   illustration.appendChild(emptyIcon);
@@ -3838,6 +3912,36 @@ function createLogoPlaceholder(): FrameNode {
   return logo;
 }
 
+/**
+ * Creates a content placeholder with a light grey background and centered label.
+ * Use this instead of grey boxes for content areas.
+ */
+function createContentPlaceholder(width: number, height: number, label: string = "Content Placeholder"): FrameNode {
+  const container = figma.createFrame();
+  container.name = "content-placeholder";
+  container.resize(width, height);
+  container.cornerRadius = BORDER_RADIUS;
+  // Light grey background (lighter than muted)
+  container.fills = [{ type: "SOLID", color: { r: 0.96, g: 0.96, b: 0.96 } }];
+  // Add a subtle dashed border
+  container.strokes = [{ type: "SOLID", color: { r: 0.85, g: 0.85, b: 0.85 } }];
+  container.strokeWeight = 1;
+  container.dashPattern = [4, 4];
+
+  // Center the content
+  container.layoutMode = "VERTICAL";
+  container.primaryAxisAlignItems = "CENTER";
+  container.counterAxisAlignItems = "CENTER";
+  container.primaryAxisSizingMode = "FIXED";
+  container.counterAxisSizingMode = "FIXED";
+
+  // Add label text
+  const text = createText(label, 12, "Medium", COLORS.mutedForeground);
+  container.appendChild(text);
+
+  return container;
+}
+
 function createFormContainer(width: number): FrameNode {
   const form = figma.createFrame();
   form.name = "form";
@@ -3970,7 +4074,7 @@ function createButton(
     case "outline":
       bgColor = COLORS.background;
       textColor = COLORS.foreground;
-      strokeColor = COLORS.border;
+      strokeColor = COLORS.foreground; // Use foreground (black) for outline, not border (grey)
       break;
     case "destructive":
       bgColor = COLORS.destructive;
