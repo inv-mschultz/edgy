@@ -143,6 +143,10 @@ let FONT_FAMILY = "Inter";
 let BASE_FONT_SIZE = 14;
 let HEADING_FONT_SIZE = 24;
 
+// Active component library and analysis (module-level for fallback functions)
+let ACTIVE_COMPONENT_LIBRARY: ComponentLibrary | null = null;
+let ACTIVE_SCREEN_ANALYSIS: ScreenAnalysis | null = null;
+
 /**
  * Apply a solid fill to a node, binding to a Figma variable if available.
  */
@@ -263,7 +267,9 @@ let componentLibraryCache: ComponentLibrary | null = null;
 
 async function getOrDiscoverComponents(): Promise<ComponentLibrary> {
   if (!componentLibraryCache) {
+    console.log("[edgy] Discovering components...");
     componentLibraryCache = await discoverComponents();
+    console.log(`[edgy] Component library: ${componentLibraryCache.buttons.length} buttons, ${componentLibraryCache.inputs.length} inputs, ${componentLibraryCache.toggles.length} toggles`);
   }
   return componentLibraryCache;
 }
@@ -395,6 +401,10 @@ export async function designScreen(
   // Discover component library for instantiating design system components
   const componentLibrary = await getOrDiscoverComponents();
 
+  // Set module-level variables so even fallback functions can use the library
+  ACTIVE_COMPONENT_LIBRARY = componentLibrary;
+  ACTIVE_SCREEN_ANALYSIS = analysis;
+
   const frame = figma.createFrame();
   frame.name = finding.missing_screen.name || "Screen";
   frame.resize(width, height);
@@ -413,37 +423,243 @@ export async function designScreen(
     height,
     padding: ACTIVE_PADDING,
     gap: ACTIVE_GAP,
+    sectionGap: SECTION_GAP,
     contentWidth: ACTIVE_CONTENT_WIDTH || Math.min(width - 48, 327),
     centerX: width / 2,
   };
 
   // Route to specific designer based on screen type
+  // All functions now use context for component library access
   if (flowType === "authentication") {
     await designAuthScreenEnhanced(frame, screenId, context);
   } else if (flowType === "checkout") {
-    await designCheckoutScreen(frame, screenId, width, height);
+    await designCheckoutScreenEnhanced(frame, screenId, context);
   } else if (flowType === "onboarding") {
     await designOnboardingScreenEnhanced(frame, screenId, context);
   } else if (flowType === "crud") {
-    await designCrudScreen(frame, screenId, width, height);
+    await designCrudScreenEnhanced(frame, screenId, context);
   } else if (flowType === "search") {
-    await designSearchScreen(frame, screenId, width, height);
+    await designSearchScreenEnhanced(frame, screenId, context);
   } else if (flowType === "settings") {
-    await designSettingsScreen(frame, screenId, width, height);
+    await designSettingsScreenEnhanced(frame, screenId, context);
   } else if (flowType === "upload") {
-    await designUploadScreen(frame, screenId, width, height);
+    await designUploadScreenEnhanced(frame, screenId, context);
   } else {
     // Generic fallback with enhancement
     await designGenericScreenEnhanced(frame, finding, context);
   }
 
+  // Post-process: fix button hierarchy based on proximity
+  await fixButtonProximityVariants(frame, context);
+
+  // Post-process: fix centering for frame elements with children
+  fixCenteringForFrames(frame);
+
   return frame;
+}
+
+/**
+ * Post-processing: Ensure frames with children are properly centered.
+ * Applies to frames that have auto-layout and should center their content.
+ */
+function fixCenteringForFrames(root: FrameNode): void {
+  function processFrame(frame: FrameNode): void {
+    // If this is an auto-layout frame, ensure proper alignment
+    if (frame.layoutMode !== "NONE") {
+      // Check if content should be centered (based on name or children)
+      const nameLower = frame.name.toLowerCase();
+      if (nameLower.includes("center") || nameLower.includes("button") || nameLower.includes("action")) {
+        // Ensure counter-axis centering
+        frame.counterAxisAlignItems = "CENTER";
+      }
+    }
+
+    // Recurse into children
+    for (const child of frame.children) {
+      if (child.type === "FRAME") {
+        processFrame(child);
+      }
+    }
+  }
+
+  processFrame(root);
+}
+
+/**
+ * Post-processing: When two buttons are within 64px of each other,
+ * the one that is lower or to the left should be secondary (not primary).
+ * This ensures proper visual hierarchy (primary action on right/top).
+ */
+async function fixButtonProximityVariants(frame: FrameNode, context: DesignContext): Promise<void> {
+  const PROXIMITY_THRESHOLD = 64;
+
+  // Find all button-like nodes (instances or frames named with "button" or "btn")
+  const buttons: { node: SceneNode; x: number; y: number; isPrimary: boolean }[] = [];
+
+  function findButtons(parent: SceneNode): void {
+    if (!("children" in parent)) return;
+
+    for (const child of (parent as FrameNode).children) {
+      const nameLower = child.name.toLowerCase();
+      const isButton = nameLower.includes("button") || nameLower.includes("btn") ||
+        (child.type === "INSTANCE" && child.name.toLowerCase().includes("button"));
+
+      if (isButton && "x" in child && "y" in child) {
+        // Determine if this looks like a primary button
+        let isPrimary = false;
+        if (child.type === "INSTANCE") {
+          // Check variant properties
+          const props = child.componentProperties;
+          if (props) {
+            const propsStr = JSON.stringify(props).toLowerCase();
+            isPrimary = propsStr.includes("primary") || propsStr.includes("filled") || propsStr.includes("solid");
+          }
+        } else if (child.type === "FRAME" && "fills" in child) {
+          // Check if it has a solid colored fill (primary buttons usually do)
+          const fills = child.fills as Paint[];
+          if (fills && fills.length > 0) {
+            const solidFill = fills.find(f => f.type === "SOLID" && f.visible !== false);
+            if (solidFill && solidFill.type === "SOLID") {
+              // Not white/transparent = likely primary
+              const { r, g, b } = solidFill.color;
+              isPrimary = !(r > 0.95 && g > 0.95 && b > 0.95); // Not white
+            }
+          }
+        }
+
+        // Get absolute position
+        const absX = getAbsoluteX(child, frame);
+        const absY = getAbsoluteY(child, frame);
+
+        buttons.push({ node: child, x: absX, y: absY, isPrimary });
+      }
+
+      // Recurse
+      if ("children" in child) {
+        findButtons(child);
+      }
+    }
+  }
+
+  findButtons(frame);
+
+  if (buttons.length < 2) return;
+
+  // Group buttons by proximity
+  const groups: typeof buttons[] = [];
+  const assigned = new Set<SceneNode>();
+
+  for (const btn of buttons) {
+    if (assigned.has(btn.node)) continue;
+
+    const group = [btn];
+    assigned.add(btn.node);
+
+    // Find other buttons within proximity
+    for (const other of buttons) {
+      if (assigned.has(other.node)) continue;
+
+      const dx = Math.abs(btn.x - other.x);
+      const dy = Math.abs(btn.y - other.y);
+
+      // Within proximity (either horizontally or vertically aligned)
+      if (dx <= PROXIMITY_THRESHOLD || dy <= PROXIMITY_THRESHOLD) {
+        group.push(other);
+        assigned.add(other.node);
+      }
+    }
+
+    if (group.length > 1) {
+      groups.push(group);
+    }
+  }
+
+  // For each group, ensure only ONE primary (the rightmost or topmost)
+  for (const group of groups) {
+    // Sort to find the "primary" position:
+    // - If horizontally arranged (similar Y): rightmost is primary
+    // - If vertically arranged (similar X): topmost (lower Y) is primary
+    const ySpread = Math.max(...group.map(b => b.y)) - Math.min(...group.map(b => b.y));
+    const xSpread = Math.max(...group.map(b => b.x)) - Math.min(...group.map(b => b.x));
+
+    let primaryBtn: typeof group[0];
+    if (xSpread > ySpread) {
+      // Horizontally arranged - rightmost is primary
+      primaryBtn = group.reduce((max, b) => b.x > max.x ? b : max, group[0]);
+    } else {
+      // Vertically arranged - bottom is typically primary (above the fold)
+      primaryBtn = group.reduce((max, b) => b.y > max.y ? b : max, group[0]);
+    }
+
+    // Make others secondary by swapping with secondary variant if possible
+    for (const btn of group) {
+      if (btn === primaryBtn) continue;
+
+      // Try to swap to secondary variant
+      if (btn.node.type === "INSTANCE" && context.componentLibrary) {
+        const secondaryComp = findBestComponent(context.componentLibrary, "button", "secondary");
+        if (secondaryComp) {
+          try {
+            const newInstance = await createComponentInstance(secondaryComp.key);
+            if (newInstance) {
+              // Copy text content
+              const oldTexts = btn.node.findAll(n => n.type === "TEXT") as TextNode[];
+              const newTexts = newInstance.findAll(n => n.type === "TEXT") as TextNode[];
+              if (oldTexts.length > 0 && newTexts.length > 0) {
+                const text = oldTexts[0].characters;
+                await applyTextToInstance(newInstance, text);
+              }
+
+              // Copy position and size
+              newInstance.x = btn.node.x;
+              newInstance.y = btn.node.y;
+              if (Math.abs(newInstance.width - btn.node.width) > 10) {
+                newInstance.resize(btn.node.width, newInstance.height);
+              }
+
+              // Replace in parent
+              const parent = btn.node.parent;
+              if (parent && "insertChild" in parent) {
+                const index = parent.children.indexOf(btn.node);
+                btn.node.remove();
+                parent.insertChild(index, newInstance);
+                console.log(`[edgy] Swapped button to secondary variant`);
+              }
+            }
+          } catch (e) {
+            console.warn("[edgy] Failed to swap button variant:", e);
+          }
+        }
+      }
+    }
+  }
+}
+
+function getAbsoluteX(node: SceneNode, root: FrameNode): number {
+  let x = "x" in node ? node.x : 0;
+  let parent = node.parent;
+  while (parent && parent !== root && "x" in parent) {
+    x += parent.x;
+    parent = parent.parent;
+  }
+  return x;
+}
+
+function getAbsoluteY(node: SceneNode, root: FrameNode): number {
+  let y = "y" in node ? node.y : 0;
+  let parent = node.parent;
+  while (parent && parent !== root && "y" in parent) {
+    y += parent.y;
+    parent = parent.parent;
+  }
+  return y;
 }
 
 // --- Active Layout Values (from analysis) ---
 
 let ACTIVE_PADDING = 24;
 let ACTIVE_GAP = 16;
+let SECTION_GAP = 32; // Larger gap between major screen sections
 let ACTIVE_CONTENT_WIDTH: number | null = null;
 
 // --- Design Context ---
@@ -456,6 +672,7 @@ interface DesignContext {
   height: number;
   padding: number;
   gap: number;
+  sectionGap: number; // Larger gap between major screen sections
   contentWidth: number;
   centerX: number;
 }
@@ -469,11 +686,21 @@ interface DesignContext {
 async function createButtonFromAnalysis(
   context: DesignContext,
   label: string,
-  variant: "primary" | "secondary" | "outline" | "destructive" = "primary",
+  variant: "primary" | "secondary" | "outline" | "destructive" | "ghost" | "link" = "primary",
   width?: number
 ): Promise<SceneNode> {
   const { analysis, componentLibrary, contentWidth } = context;
   const buttonWidth = width || contentWidth;
+
+  // Auto-detect destructive variant from label
+  const labelLower = label.toLowerCase();
+  if (variant === "primary" && (
+    labelLower.includes("delete") || labelLower.includes("remove") ||
+    labelLower.includes("destroy") || labelLower.includes("cancel account") ||
+    labelLower.includes("deactivate")
+  )) {
+    variant = "destructive";
+  }
 
   // Find the best matching button from analysis (cloned instances)
   let bestButton: ReturnType<typeof findBestInstance> = null;
@@ -489,6 +716,7 @@ async function createButtonFromAnalysis(
       if (Math.abs(clone.width - buttonWidth) > 20) {
         clone.resize(buttonWidth, clone.height);
       }
+      console.log(`[edgy] Cloned button "${variant}" from analysis`);
       return clone;
     } catch (e) {
       console.warn("[edgy] Failed to clone button instance:", e);
@@ -497,7 +725,10 @@ async function createButtonFromAnalysis(
 
   // Try to instantiate from component library (main components)
   if (componentLibrary) {
-    const variantName = variant === "secondary" ? "outline" : variant;
+    // Map variant aliases for component library lookup
+    let variantName = variant;
+    if (variant === "secondary") variantName = "outline";
+
     const bestComponent = findBestComponent(componentLibrary, "button", variantName);
     if (bestComponent) {
       try {
@@ -505,10 +736,11 @@ async function createButtonFromAnalysis(
         if (instance) {
           // Apply text override
           await applyTextToInstance(instance, label);
-          // Resize if needed
-          if (Math.abs(instance.width - buttonWidth) > 20) {
+          // Resize if needed - but not for link/ghost buttons which should hug content
+          if (variant !== "link" && variant !== "ghost" && Math.abs(instance.width - buttonWidth) > 20) {
             instance.resize(buttonWidth, instance.height);
           }
+          console.log(`[edgy] Instantiated button "${variant}" from library: ${bestComponent.name}`);
           return instance;
         }
       } catch (e) {
@@ -518,6 +750,7 @@ async function createButtonFromAnalysis(
   }
 
   // Fallback to created button, using extracted colors if available
+  console.log(`[edgy] Falling back to hardcoded button for "${variant}"`);
   const colorOverrides: ButtonColorOverrides | undefined = bestButton
     ? {
         bgColor: bestButton.fillColor,
@@ -525,7 +758,13 @@ async function createButtonFromAnalysis(
       }
     : undefined;
 
-  return createButton(label, variant === "secondary" ? "outline" : variant, buttonWidth, colorOverrides);
+  // Map variants for fallback creation
+  let fallbackVariant: "primary" | "outline" | "destructive" | "ghost" = "primary";
+  if (variant === "secondary" || variant === "outline") fallbackVariant = "outline";
+  else if (variant === "destructive") fallbackVariant = "destructive";
+  else if (variant === "ghost" || variant === "link") fallbackVariant = "ghost";
+
+  return createButton(label, fallbackVariant, buttonWidth, colorOverrides);
 }
 
 /**
@@ -549,26 +788,39 @@ async function applyTextToInstance(instance: InstanceNode, text: string): Promis
 
 /**
  * Try to clone an input from existing screens, or instantiate from component library.
+ * @param value - Optional pre-filled value (if provided, shows value instead of placeholder)
  */
 async function createInputFromAnalysis(
   context: DesignContext,
   label: string,
   placeholder: string,
-  width?: number
+  width?: number,
+  value?: string
 ): Promise<SceneNode> {
   const { analysis, componentLibrary, contentWidth } = context;
   const inputWidth = width || contentWidth;
+  const displayText = value || placeholder;
 
-  // Try to clone from existing screens
-  if (analysis && analysis.instances.inputs.length > 0) {
-    const bestInput = findBestInstance(analysis.instances.inputs);
+  // Filter out OTP inputs - they're not suitable for regular text fields
+  const regularInputs = analysis?.instances?.inputs?.filter(
+    (i) => !i.componentName.toLowerCase().includes("otp")
+  ) || [];
+
+  console.log(`[edgy] createInputFromAnalysis: label="${label}", regular inputs=${regularInputs.length}, library inputs=${componentLibrary?.inputs?.length || 0}`);
+
+  // Try to clone from existing screens (excluding OTP)
+  if (regularInputs.length > 0) {
+    const bestInput = findBestInstance(regularInputs);
+    console.log(`[edgy] Found best input instance:`, bestInput?.componentName);
     if (bestInput) {
       try {
         const clone = await cloneInstance(bestInput, {
           "label": label,
-          "placeholder": placeholder,
-          "*": placeholder,
+          "placeholder": displayText,
+          "value": value || "",
+          "*": displayText,
         });
+        console.log(`[edgy] Successfully cloned input from analysis`);
         // Resize to fit content width if needed
         if (Math.abs(clone.width - inputWidth) > 20) {
           clone.resize(inputWidth, clone.height);
@@ -580,14 +832,16 @@ async function createInputFromAnalysis(
     }
   }
 
-  // Try to instantiate from component library
-  if (componentLibrary) {
+  // Try to instantiate from component library (already excludes OTP in discovery)
+  if (componentLibrary && componentLibrary.inputs.length > 0) {
     const bestComponent = findBestComponent(componentLibrary, "input");
+    console.log(`[edgy] Found best input component:`, bestComponent?.name);
     if (bestComponent) {
       try {
         const instance = await createComponentInstance(bestComponent.key);
         if (instance) {
-          await applyTextToInstance(instance, placeholder);
+          console.log(`[edgy] Successfully instantiated input component`);
+          await applyTextToInstance(instance, displayText);
           if (Math.abs(instance.width - inputWidth) > 20) {
             instance.resize(inputWidth, instance.height);
           }
@@ -600,19 +854,90 @@ async function createInputFromAnalysis(
   }
 
   // Fallback to created input
+  console.log(`[edgy] Falling back to hardcoded input for "${label}"`);
+  if (value) {
+    return createLabeledInputWithValue(label, value, inputWidth);
+  }
   return createLabeledInput(label, placeholder, inputWidth);
+}
+
+/**
+ * Try to clone a select/dropdown from existing screens, or instantiate from component library.
+ */
+async function createSelectFromAnalysis(
+  context: DesignContext,
+  label: string,
+  placeholder: string,
+  width?: number
+): Promise<SceneNode> {
+  const { analysis, componentLibrary, contentWidth } = context;
+  const selectWidth = width || contentWidth;
+
+  // Try to clone from existing screens - look for selects in inputs array
+  if (analysis && analysis.instances.inputs.length > 0) {
+    // Prefer components with "select" or "dropdown" in the name
+    const selectInstance = analysis.instances.inputs.find(
+      (c) => c.componentName.toLowerCase().includes("select") ||
+             c.componentName.toLowerCase().includes("dropdown") ||
+             c.componentName.toLowerCase().includes("picker")
+    );
+    if (selectInstance) {
+      try {
+        const clone = await cloneInstance(selectInstance, {
+          "label": label,
+          "placeholder": placeholder,
+          "*": placeholder,
+        });
+        if (Math.abs(clone.width - selectWidth) > 20) {
+          clone.resize(selectWidth, clone.height);
+        }
+        return clone;
+      } catch (e) {
+        console.warn("[edgy] Failed to clone select:", e);
+      }
+    }
+  }
+
+  // Try to instantiate from component library - look for select components
+  if (componentLibrary) {
+    // Search all components for a select/dropdown
+    const selectComponent = Array.from(componentLibrary.components.values()).find(
+      (c) => {
+        const name = (c.componentSetName || c.name).toLowerCase();
+        return name.includes("select") || name.includes("dropdown") || name.includes("picker");
+      }
+    );
+    if (selectComponent) {
+      try {
+        const instance = await createComponentInstance(selectComponent.key);
+        if (instance) {
+          await applyTextToInstance(instance, placeholder);
+          if (Math.abs(instance.width - selectWidth) > 20) {
+            instance.resize(selectWidth, instance.height);
+          }
+          return instance;
+        }
+      } catch (e) {
+        console.warn("[edgy] Failed to instantiate select component:", e);
+      }
+    }
+  }
+
+  // Fallback to created select
+  return createLabeledSelect(label, placeholder, selectWidth);
 }
 
 /**
  * Try to clone a toggle/switch from existing screens, or instantiate from component library.
  * Toggles are preferred for boolean on/off decisions.
+ * Always returns a row with label + switch for clarity.
  */
 async function createToggleFromAnalysis(
   context: DesignContext,
   label: string,
   enabled: boolean = false
 ): Promise<SceneNode> {
-  const { analysis, componentLibrary } = context;
+  const { analysis, componentLibrary, contentWidth } = context;
 
   // Try to clone from existing screens (look for toggles in checkboxes array since they share the role)
   if (analysis && analysis.instances.checkboxes.length > 0) {
@@ -623,7 +948,13 @@ async function createToggleFromAnalysis(
     );
     if (toggleInstance) {
       try {
-        return await cloneInstance(toggleInstance, { "*": label, "label": label });
+        const toggle = await cloneInstance(toggleInstance, { "*": label, "label": label });
+        // If the cloned instance doesn't have visible text, wrap it with a label
+        const hasText = toggle.findOne?.(n => n.type === "TEXT" && n.characters.length > 0);
+        if (!hasText) {
+          return createToggleRowWithLabel(toggle, label, contentWidth);
+        }
+        return toggle;
       } catch (e) {
         console.warn("[edgy] Failed to clone toggle:", e);
       }
@@ -637,8 +968,15 @@ async function createToggleFromAnalysis(
       try {
         const instance = await createComponentInstance(toggleComponent.key);
         if (instance) {
-          await applyTextToInstance(instance, label);
-          return instance;
+          // Try to apply text, but if no text nodes exist, wrap with label
+          const textNodes = instance.findAll(n => n.type === "TEXT") as TextNode[];
+          if (textNodes.length > 0) {
+            await applyTextToInstance(instance, label);
+            return instance;
+          } else {
+            // Switch has no label - wrap it with one
+            return createToggleRowWithLabel(instance, label, contentWidth);
+          }
         }
       } catch (e) {
         console.warn("[edgy] Failed to instantiate toggle component:", e);
@@ -648,6 +986,79 @@ async function createToggleFromAnalysis(
 
   // Fallback to created toggle
   return createToggle(label, enabled);
+}
+
+/**
+ * Wraps a switch/toggle component with a label in a horizontal row.
+ */
+function createToggleRowWithLabel(toggle: SceneNode, label: string, width: number): FrameNode {
+  const row = figma.createFrame();
+  row.name = `Toggle: ${label}`;
+  row.layoutMode = "HORIZONTAL";
+  row.primaryAxisSizingMode = "FIXED";
+  row.counterAxisSizingMode = "AUTO";
+  row.resize(width, 44);
+  row.primaryAxisAlignItems = "SPACE_BETWEEN";
+  row.counterAxisAlignItems = "CENTER";
+  row.fills = [];
+
+  // Label on the left
+  const labelText = figma.createText();
+  labelText.fontName = { family: FONT_FAMILY, style: "Regular" };
+  labelText.fontSize = BASE_FONT_SIZE;
+  labelText.characters = label;
+  labelText.fills = [{ type: "SOLID", color: COLORS.foreground }];
+  row.appendChild(labelText);
+
+  // Toggle on the right
+  row.appendChild(toggle);
+
+  return row;
+}
+
+/**
+ * Creates a button group with proper vertical spacing.
+ * Automatically detects destructive buttons by label.
+ */
+async function createButtonGroup(
+  context: DesignContext,
+  buttons: { label: string; variant?: "primary" | "secondary" | "outline" | "destructive" | "ghost" | "link" }[],
+  width?: number
+): Promise<FrameNode> {
+  const { contentWidth, gap } = context;
+  const groupWidth = width || contentWidth;
+
+  const group = figma.createFrame();
+  group.name = "Button Group";
+  group.layoutMode = "VERTICAL";
+  group.primaryAxisSizingMode = "AUTO";
+  group.counterAxisSizingMode = "FIXED";
+  group.resize(groupWidth, 100);
+  group.itemSpacing = gap;
+  group.fills = [];
+
+  for (let i = 0; i < buttons.length; i++) {
+    const { label } = buttons[i];
+    let { variant } = buttons[i];
+
+    // Auto-detect destructive buttons by label
+    if (!variant) {
+      const labelLower = label.toLowerCase();
+      if (labelLower.includes("delete") || labelLower.includes("remove") ||
+          labelLower.includes("destroy") || labelLower.includes("cancel account")) {
+        variant = "destructive";
+      } else if (i === 0) {
+        variant = "primary";
+      } else {
+        variant = "secondary";
+      }
+    }
+
+    const btn = await createButtonFromAnalysis(context, label, variant, groupWidth);
+    group.appendChild(btn);
+  }
+
+  return group;
 }
 
 /**
@@ -1115,24 +1526,12 @@ async function designProfileSetupScreenEnhanced(frame: FrameNode, context: Desig
   frame.appendChild(avatar);
   y += 100;
 
-  // Upload photo text
-  const uploadText = createText("Upload Photo", BASE_FONT_SIZE, "Medium", COLORS.primary);
-  uploadText.x = centerX - uploadText.width / 2;
-  uploadText.y = y;
-  frame.appendChild(uploadText);
-  y += 40;
-
-  // Form
-  const form = figma.createFrame();
-  form.name = "Form";
-  form.layoutMode = "VERTICAL";
-  form.itemSpacing = gap;
-  form.primaryAxisSizingMode = "AUTO";
-  form.counterAxisSizingMode = "FIXED";
-  form.resize(contentWidth, 100);
-  form.fills = [];
-  form.x = centerX - contentWidth / 2;
-  form.y = y;
+  // Upload photo button (link/ghost style)
+  const uploadBtn = await createButtonFromAnalysis(context, "Upload Photo", "link");
+  uploadBtn.x = centerX - uploadBtn.width / 2;
+  uploadBtn.y = y;
+  frame.appendChild(uploadBtn);
+  y += 56;
 
   // Name input
   const nameInput = await createInputFromAnalysis(
@@ -1140,9 +1539,12 @@ async function designProfileSetupScreenEnhanced(frame: FrameNode, context: Desig
     labels.inputs["name"]?.label || "Display Name",
     labels.inputs["name"]?.placeholder || "What should we call you?"
   );
-  form.appendChild(nameInput);
-
-  frame.appendChild(form);
+  nameInput.x = centerX - contentWidth / 2;
+  nameInput.y = y;
+  if ("resize" in nameInput) {
+    (nameInput as FrameNode).resize(contentWidth, (nameInput as FrameNode).height);
+  }
+  frame.appendChild(nameInput);
 
   // Buttons at bottom
   const primaryBtn = await createButtonFromAnalysis(context, labels.primaryButton, "primary");
@@ -1151,10 +1553,11 @@ async function designProfileSetupScreenEnhanced(frame: FrameNode, context: Desig
   frame.appendChild(primaryBtn);
 
   if (labels.secondaryButton) {
-    const skipText = createText(labels.secondaryButton, BASE_FONT_SIZE, "Medium", COLORS.mutedForeground);
-    skipText.x = centerX - skipText.width / 2;
-    skipText.y = height - 60;
-    frame.appendChild(skipText);
+    // Use ghost/link button for secondary action
+    const skipBtn = await createButtonFromAnalysis(context, labels.secondaryButton, "ghost");
+    skipBtn.x = centerX - skipBtn.width / 2;
+    skipBtn.y = height - 60;
+    frame.appendChild(skipBtn);
   }
 }
 
@@ -2064,943 +2467,33 @@ function applyTextOverrides(instance: InstanceNode, overrides: Record<string, st
   }
 }
 
-// ============================================================
-// AUTHENTICATION SCREENS
-// ============================================================
-
-async function designAuthScreen(frame: FrameNode, screenId: string, width: number, height: number) {
-  const padding = 24;
-  const contentWidth = Math.min(width - padding * 2, 320);
-  const centerX = width / 2;
-
-  if (screenId === "login" || screenId === "signin") {
-    await designLoginScreen(frame, contentWidth, centerX, height);
-  } else if (screenId === "signup" || screenId === "register") {
-    await designSignupScreen(frame, contentWidth, centerX, height);
-  } else if (screenId === "forgot-password" || screenId === "forgot_password") {
-    await designForgotPasswordScreen(frame, contentWidth, centerX, height);
-  } else if (screenId === "reset-password" || screenId === "reset_password") {
-    await designResetPasswordScreen(frame, contentWidth, centerX, height);
-  } else if (screenId === "2fa" || screenId === "mfa" || screenId === "verification") {
-    await design2FAScreen(frame, contentWidth, centerX, height);
-  } else if (screenId === "error" || screenId === "auth-error") {
-    await designAuthErrorScreen(frame, contentWidth, centerX, height);
-  } else {
-    await designGenericAuthScreen(frame, screenId, contentWidth, centerX, height);
-  }
-}
-
-async function designLoginScreen(frame: FrameNode, contentWidth: number, centerX: number, height: number) {
-  let y = 80;
-
-  // Logo placeholder
-  const logo = createLogoPlaceholder();
-  logo.x = centerX - 24;
-  logo.y = y;
-  frame.appendChild(logo);
-  y += 68;
-
-  // Title
-  const title = createText("Welcome back", 24, "Semi Bold", COLORS.foreground);
-  title.x = centerX - title.width / 2;
-  title.y = y;
-  frame.appendChild(title);
-  y += 36;
-
-  // Subtitle
-  const subtitle = createText("Sign in to your account", 14, "Regular", COLORS.mutedForeground);
-  subtitle.x = centerX - subtitle.width / 2;
-  subtitle.y = y;
-  frame.appendChild(subtitle);
-  y += 40;
-
-  // Form container
-  const form = createFormContainer(contentWidth);
-  form.x = centerX - contentWidth / 2;
-  form.y = y;
-
-  // Email input
-  const emailField = createLabeledInput("Email", "Enter your email", contentWidth);
-  form.appendChild(emailField);
-
-  // Password input
-  const passwordField = createLabeledInput("Password", "Enter your password", contentWidth);
-  form.appendChild(passwordField);
-
-  // Forgot password link
-  const forgotLink = createText("Forgot password?", 14, "Medium", COLORS.primary);
-  form.appendChild(forgotLink);
-
-  // Sign in button
-  const signInBtn = createButton("Sign in", "primary", contentWidth);
-  form.appendChild(signInBtn);
-
-  // Divider
-  const divider = createDivider(contentWidth, "or continue with");
-  form.appendChild(divider);
-
-  // Social buttons row
-  const socialRow = createSocialButtons(contentWidth);
-  form.appendChild(socialRow);
-
-  frame.appendChild(form);
-
-  // Sign up link at bottom
-  const signupText = createText("Don't have an account? Sign up", 14, "Regular", COLORS.mutedForeground);
-  signupText.x = centerX - signupText.width / 2;
-  signupText.y = height - 60;
-  frame.appendChild(signupText);
-}
-
-async function designSignupScreen(frame: FrameNode, contentWidth: number, centerX: number, height: number) {
-  let y = 60;
-
-  // Title
-  const title = createText("Create account", 24, "Semi Bold", COLORS.foreground);
-  title.x = centerX - title.width / 2;
-  title.y = y;
-  frame.appendChild(title);
-  y += 36;
-
-  // Subtitle
-  const subtitle = createText("Start your journey with us", 14, "Regular", COLORS.mutedForeground);
-  subtitle.x = centerX - subtitle.width / 2;
-  subtitle.y = y;
-  frame.appendChild(subtitle);
-  y += 36;
-
-  // Form
-  const form = createFormContainer(contentWidth);
-  form.x = centerX - contentWidth / 2;
-  form.y = y;
-
-  form.appendChild(createLabeledInput("Full name", "Enter your name", contentWidth));
-  form.appendChild(createLabeledInput("Email", "Enter your email", contentWidth));
-  form.appendChild(createLabeledInput("Password", "Create a password", contentWidth));
-  form.appendChild(createLabeledInput("Confirm password", "Confirm your password", contentWidth));
-
-  // Terms checkbox
-  const terms = createCheckbox("I agree to the Terms of Service and Privacy Policy");
-  form.appendChild(terms);
-
-  // Create account button
-  const createBtn = createButton("Create account", "primary", contentWidth);
-  form.appendChild(createBtn);
-
-  frame.appendChild(form);
-
-  // Login link
-  const loginText = createText("Already have an account? Sign in", 14, "Regular", COLORS.mutedForeground);
-  loginText.x = centerX - loginText.width / 2;
-  loginText.y = height - 60;
-  frame.appendChild(loginText);
-}
-
-async function designForgotPasswordScreen(frame: FrameNode, contentWidth: number, centerX: number, height: number) {
-  let y = 120;
-
-  // Icon
-  const icon = createIconCircle("✉", COLORS.primary);
-  icon.x = centerX - 28;
-  icon.y = y;
-  frame.appendChild(icon);
-  y += 76;
-
-  // Title
-  const title = createText("Forgot password?", 24, "Semi Bold", COLORS.foreground);
-  title.x = centerX - title.width / 2;
-  title.y = y;
-  frame.appendChild(title);
-  y += 36;
-
-  // Description
-  const desc = createText("No worries, we'll send you reset instructions.", 14, "Regular", COLORS.mutedForeground);
-  desc.x = centerX - desc.width / 2;
-  desc.y = y;
-  frame.appendChild(desc);
-  y += 40;
-
-  // Form
-  const form = createFormContainer(contentWidth);
-  form.x = centerX - contentWidth / 2;
-  form.y = y;
-
-  form.appendChild(createLabeledInput("Email", "Enter your email", contentWidth));
-  form.appendChild(createButton("Send reset link", "primary", contentWidth));
-
-  frame.appendChild(form);
-
-  // Back to login
-  const backText = createText("← Back to login", 14, "Medium", COLORS.primary);
-  backText.x = centerX - backText.width / 2;
-  backText.y = height - 60;
-  frame.appendChild(backText);
-}
-
-async function designResetPasswordScreen(frame: FrameNode, contentWidth: number, centerX: number, height: number) {
-  let y = 120;
-
-  // Icon
-  const icon = createIconCircle("🔐", COLORS.primary);
-  icon.x = centerX - 28;
-  icon.y = y;
-  frame.appendChild(icon);
-  y += 76;
-
-  // Title
-  const title = createText("Set new password", 24, "Semi Bold", COLORS.foreground);
-  title.x = centerX - title.width / 2;
-  title.y = y;
-  frame.appendChild(title);
-  y += 36;
-
-  // Description
-  const desc = createText("Your new password must be different from previous ones.", 14, "Regular", COLORS.mutedForeground);
-  desc.resize(contentWidth, desc.height);
-  desc.textAutoResize = "HEIGHT";
-  desc.textAlignHorizontal = "CENTER";
-  desc.x = centerX - contentWidth / 2;
-  desc.y = y;
-  frame.appendChild(desc);
-  y += 50;
-
-  // Form
-  const form = createFormContainer(contentWidth);
-  form.x = centerX - contentWidth / 2;
-  form.y = y;
-
-  form.appendChild(createLabeledInput("New password", "Enter new password", contentWidth));
-  form.appendChild(createLabeledInput("Confirm password", "Confirm new password", contentWidth));
-  form.appendChild(createButton("Reset password", "primary", contentWidth));
-
-  frame.appendChild(form);
-}
-
-async function design2FAScreen(frame: FrameNode, contentWidth: number, centerX: number, height: number) {
-  let y = 120;
-
-  // Icon
-  const icon = createIconCircle("🔒", COLORS.primary);
-  icon.x = centerX - 28;
-  icon.y = y;
-  frame.appendChild(icon);
-  y += 76;
-
-  // Title
-  const title = createText("Two-factor authentication", 24, "Semi Bold", COLORS.foreground);
-  title.x = centerX - title.width / 2;
-  title.y = y;
-  frame.appendChild(title);
-  y += 36;
-
-  // Description
-  const desc = createText("Enter the 6-digit code from your authenticator app.", 14, "Regular", COLORS.mutedForeground);
-  desc.x = centerX - desc.width / 2;
-  desc.y = y;
-  frame.appendChild(desc);
-  y += 50;
-
-  // Code input boxes
-  const codeRow = createCodeInputRow(6, contentWidth);
-  codeRow.x = centerX - codeRow.width / 2;
-  codeRow.y = y;
-  frame.appendChild(codeRow);
-  y += 70;
-
-  // Verify button
-  const verifyBtn = createButton("Verify", "primary", contentWidth);
-  verifyBtn.x = centerX - contentWidth / 2;
-  verifyBtn.y = y;
-  frame.appendChild(verifyBtn);
-  y += 60;
-
-  // Resend code
-  const resendText = createText("Didn't receive a code? Resend", 14, "Regular", COLORS.mutedForeground);
-  resendText.x = centerX - resendText.width / 2;
-  resendText.y = y;
-  frame.appendChild(resendText);
-}
-
-async function designAuthErrorScreen(frame: FrameNode, contentWidth: number, centerX: number, height: number) {
-  let y = 150;
-
-  // Error icon
-  const icon = createIconCircle("!", COLORS.destructive);
-  icon.x = centerX - 28;
-  icon.y = y;
-  frame.appendChild(icon);
-  y += 76;
-
-  // Title
-  const title = createText("Something went wrong", 24, "Semi Bold", COLORS.foreground);
-  title.x = centerX - title.width / 2;
-  title.y = y;
-  frame.appendChild(title);
-  y += 36;
-
-  // Description
-  const desc = createText("We couldn't complete your request. Please try again.", 14, "Regular", COLORS.mutedForeground);
-  desc.x = centerX - desc.width / 2;
-  desc.y = y;
-  frame.appendChild(desc);
-  y += 50;
-
-  // Error details card
-  const errorCard = createErrorCard(contentWidth, "Error: Authentication failed. Invalid credentials provided.");
-  errorCard.x = centerX - contentWidth / 2;
-  errorCard.y = y;
-  frame.appendChild(errorCard);
-  y += 100;
-
-  // Buttons
-  const retryBtn = createButton("Try again", "primary", contentWidth);
-  retryBtn.x = centerX - contentWidth / 2;
-  retryBtn.y = y;
-  frame.appendChild(retryBtn);
-  y += 52;
-
-  const backBtn = createButton("Back to login", "outline", contentWidth);
-  backBtn.x = centerX - contentWidth / 2;
-  backBtn.y = y;
-  frame.appendChild(backBtn);
-}
-
-async function designGenericAuthScreen(frame: FrameNode, screenId: string, contentWidth: number, centerX: number, height: number) {
-  let y = 120;
-
-  const title = createText(formatScreenName(screenId), 24, "Semi Bold", COLORS.foreground);
-  title.x = centerX - title.width / 2;
-  title.y = y;
-  frame.appendChild(title);
-  y += 50;
-
-  const form = createFormContainer(contentWidth);
-  form.x = centerX - contentWidth / 2;
-  form.y = y;
-
-  form.appendChild(createLabeledInput("Field", "Enter value", contentWidth));
-  form.appendChild(createButton("Continue", "primary", contentWidth));
-
-  frame.appendChild(form);
-}
 
 // ============================================================
-// CHECKOUT SCREENS
+// CRUD SCREENS - ENHANCED (with component library)
 // ============================================================
 
-async function designCheckoutScreen(frame: FrameNode, screenId: string, width: number, height: number) {
-  const padding = 20;
-  const contentWidth = width - padding * 2;
-
-  if (screenId === "cart" || screenId === "shopping-cart") {
-    await designCartScreen(frame, contentWidth, padding, height);
-  } else if (screenId === "shipping" || screenId === "address") {
-    await designShippingScreen(frame, contentWidth, padding, height);
-  } else if (screenId === "payment") {
-    await designPaymentScreen(frame, contentWidth, padding, height);
-  } else if (screenId === "review" || screenId === "order-review") {
-    await designOrderReviewScreen(frame, contentWidth, padding, height);
-  } else if (screenId === "confirmation" || screenId === "success") {
-    await designOrderConfirmationScreen(frame, contentWidth, width / 2, height);
-  } else if (screenId === "error") {
-    await designCheckoutErrorScreen(frame, contentWidth, width / 2, height);
-  } else {
-    await designGenericCheckoutScreen(frame, screenId, contentWidth, padding, height);
-  }
-}
-
-async function designCartScreen(frame: FrameNode, contentWidth: number, padding: number, height: number) {
-  let y = 20;
-
-  // Header
-  const header = createScreenHeader("Shopping Cart", "3 items");
-  header.x = padding;
-  header.y = y;
-  header.resize(contentWidth, header.height);
-  frame.appendChild(header);
-  y += 70;
-
-  // Cart items
-  for (let i = 0; i < 2; i++) {
-    const item = createCartItem(contentWidth, `Product ${i + 1}`, "$49.99");
-    item.x = padding;
-    item.y = y;
-    frame.appendChild(item);
-    y += 100;
-  }
-
-  // Divider
-  const divider = figma.createFrame();
-  divider.resize(contentWidth, 1);
-  divider.fills = [{ type: "SOLID", color: COLORS.border, opacity: 1 }];
-  divider.x = padding;
-  divider.y = y;
-  frame.appendChild(divider);
-  y += 20;
-
-  // Totals
-  const subtotal = createPriceRow("Subtotal", "$99.98", contentWidth);
-  subtotal.x = padding;
-  subtotal.y = y;
-  frame.appendChild(subtotal);
-  y += 32;
-
-  const shipping = createPriceRow("Shipping", "$5.00", contentWidth);
-  shipping.x = padding;
-  shipping.y = y;
-  frame.appendChild(shipping);
-  y += 32;
-
-  const total = createPriceRow("Total", "$104.98", contentWidth, true);
-  total.x = padding;
-  total.y = y;
-  frame.appendChild(total);
-
-  // Checkout button (sticky at bottom)
-  const checkoutBtn = createButton("Proceed to Checkout", "primary", contentWidth);
-  checkoutBtn.x = padding;
-  checkoutBtn.y = height - 70;
-  frame.appendChild(checkoutBtn);
-}
-
-async function designShippingScreen(frame: FrameNode, contentWidth: number, padding: number, height: number) {
-  let y = 20;
-
-  // Header with step indicator
-  const header = createScreenHeader("Shipping Address", "Step 1 of 3");
-  header.x = padding;
-  header.y = y;
-  header.resize(contentWidth, header.height);
-  frame.appendChild(header);
-  y += 60;
-
-  // Progress bar
-  const progress = createProgressBar(contentWidth, 1, 3);
-  progress.x = padding;
-  progress.y = y;
-  frame.appendChild(progress);
-  y += 40;
-
-  // Form
-  const form = createFormContainer(contentWidth);
-  form.x = padding;
-  form.y = y;
-
-  form.appendChild(createLabeledInput("Full name", "John Doe", contentWidth));
-
-  // Address row
-  form.appendChild(createLabeledInput("Street address", "123 Main St", contentWidth));
-  form.appendChild(createLabeledInput("City", "New York", contentWidth));
-
-  // State/Zip row (side by side would be nice but keeping simple)
-  form.appendChild(createLabeledInput("State", "NY", contentWidth));
-  form.appendChild(createLabeledInput("ZIP Code", "10001", contentWidth));
-  form.appendChild(createLabeledInput("Phone", "+1 (555) 000-0000", contentWidth));
-
-  frame.appendChild(form);
-
-  // Continue button
-  const continueBtn = createButton("Continue to Payment", "primary", contentWidth);
-  continueBtn.x = padding;
-  continueBtn.y = height - 70;
-  frame.appendChild(continueBtn);
-}
-
-async function designPaymentScreen(frame: FrameNode, contentWidth: number, padding: number, height: number) {
-  let y = 20;
-
-  // Header
-  const header = createScreenHeader("Payment", "Step 2 of 3");
-  header.x = padding;
-  header.y = y;
-  header.resize(contentWidth, header.height);
-  frame.appendChild(header);
-  y += 60;
-
-  // Progress bar
-  const progress = createProgressBar(contentWidth, 2, 3);
-  progress.x = padding;
-  progress.y = y;
-  frame.appendChild(progress);
-  y += 40;
-
-  // Payment method selection
-  const methodLabel = createText("Payment method", 14, "Medium", COLORS.foreground);
-  methodLabel.x = padding;
-  methodLabel.y = y;
-  frame.appendChild(methodLabel);
-  y += 28;
-
-  // Card option (selected)
-  const cardOption = createRadioOption("Credit / Debit Card", true, contentWidth);
-  cardOption.x = padding;
-  cardOption.y = y;
-  frame.appendChild(cardOption);
-  y += 52;
-
-  // Card form
-  const form = createFormContainer(contentWidth);
-  form.x = padding;
-  form.y = y;
-
-  form.appendChild(createLabeledInput("Card number", "1234 5678 9012 3456", contentWidth));
-  form.appendChild(createLabeledInput("Name on card", "John Doe", contentWidth));
-  form.appendChild(createLabeledInput("Expiry date", "MM/YY", contentWidth));
-  form.appendChild(createLabeledInput("CVV", "123", contentWidth));
-
-  frame.appendChild(form);
-
-  // Pay button
-  const payBtn = createButton("Review Order", "primary", contentWidth);
-  payBtn.x = padding;
-  payBtn.y = height - 70;
-  frame.appendChild(payBtn);
-}
-
-async function designOrderReviewScreen(frame: FrameNode, contentWidth: number, padding: number, height: number) {
-  let y = 20;
-
-  // Header
-  const header = createScreenHeader("Review Order", "Step 3 of 3");
-  header.x = padding;
-  header.y = y;
-  header.resize(contentWidth, header.height);
-  frame.appendChild(header);
-  y += 60;
-
-  // Progress bar
-  const progress = createProgressBar(contentWidth, 3, 3);
-  progress.x = padding;
-  progress.y = y;
-  frame.appendChild(progress);
-  y += 40;
-
-  // Shipping summary card
-  const shippingCard = createSummaryCard("Shipping Address", "John Doe\n123 Main St\nNew York, NY 10001", contentWidth);
-  shippingCard.x = padding;
-  shippingCard.y = y;
-  frame.appendChild(shippingCard);
-  y += shippingCard.height + 16;
-
-  // Payment summary card
-  const paymentCard = createSummaryCard("Payment Method", "Visa ending in 3456", contentWidth);
-  paymentCard.x = padding;
-  paymentCard.y = y;
-  frame.appendChild(paymentCard);
-  y += paymentCard.height + 16;
-
-  // Order total
-  const totalCard = createSummaryCard("Order Total", "$104.98", contentWidth);
-  totalCard.x = padding;
-  totalCard.y = y;
-  frame.appendChild(totalCard);
-
-  // Place order button
-  const orderBtn = createButton("Place Order", "primary", contentWidth);
-  orderBtn.x = padding;
-  orderBtn.y = height - 70;
-  frame.appendChild(orderBtn);
-}
-
-async function designOrderConfirmationScreen(frame: FrameNode, contentWidth: number, centerX: number, height: number) {
-  let y = 120;
-
-  // Success icon
-  const icon = createIconCircle("✓", COLORS.success);
-  icon.x = centerX - 28;
-  icon.y = y;
-  frame.appendChild(icon);
-  y += 76;
-
-  // Title
-  const title = createText("Order Confirmed!", 24, "Semi Bold", COLORS.foreground);
-  title.x = centerX - title.width / 2;
-  title.y = y;
-  frame.appendChild(title);
-  y += 36;
-
-  // Order number
-  const orderNum = createText("Order #12345", 16, "Medium", COLORS.primary);
-  orderNum.x = centerX - orderNum.width / 2;
-  orderNum.y = y;
-  frame.appendChild(orderNum);
-  y += 32;
-
-  // Description
-  const desc = createText("Thank you for your purchase! You'll receive\na confirmation email shortly.", 14, "Regular", COLORS.mutedForeground);
-  desc.textAlignHorizontal = "CENTER";
-  desc.x = centerX - desc.width / 2;
-  desc.y = y;
-  frame.appendChild(desc);
-  y += 60;
-
-  // Estimated delivery card
-  const deliveryCard = createSummaryCard("Estimated Delivery", "March 15-18, 2024", Math.min(contentWidth, 280));
-  deliveryCard.x = centerX - deliveryCard.width / 2;
-  deliveryCard.y = y;
-  frame.appendChild(deliveryCard);
-
-  // Continue shopping button
-  const continueBtn = createButton("Continue Shopping", "primary", Math.min(contentWidth, 280));
-  continueBtn.x = centerX - continueBtn.width / 2;
-  continueBtn.y = height - 120;
-  frame.appendChild(continueBtn);
-
-  // Track order button
-  const trackBtn = createButton("Track Order", "outline", Math.min(contentWidth, 280));
-  trackBtn.x = centerX - trackBtn.width / 2;
-  trackBtn.y = height - 64;
-  frame.appendChild(trackBtn);
-}
-
-async function designCheckoutErrorScreen(frame: FrameNode, contentWidth: number, centerX: number, height: number) {
-  let y = 150;
-
-  // Error icon
-  const icon = createIconCircle("!", COLORS.destructive);
-  icon.x = centerX - 28;
-  icon.y = y;
-  frame.appendChild(icon);
-  y += 76;
-
-  // Title
-  const title = createText("Payment Failed", 24, "Semi Bold", COLORS.foreground);
-  title.x = centerX - title.width / 2;
-  title.y = y;
-  frame.appendChild(title);
-  y += 36;
-
-  // Description
-  const desc = createText("Your payment could not be processed.\nPlease check your details and try again.", 14, "Regular", COLORS.mutedForeground);
-  desc.textAlignHorizontal = "CENTER";
-  desc.x = centerX - desc.width / 2;
-  desc.y = y;
-  frame.appendChild(desc);
-  y += 70;
-
-  // Retry button
-  const retryBtn = createButton("Try Again", "primary", Math.min(contentWidth, 280));
-  retryBtn.x = centerX - retryBtn.width / 2;
-  retryBtn.y = y;
-  frame.appendChild(retryBtn);
-  y += 52;
-
-  // Use different method
-  const diffBtn = createButton("Use Different Payment", "outline", Math.min(contentWidth, 280));
-  diffBtn.x = centerX - diffBtn.width / 2;
-  diffBtn.y = y;
-  frame.appendChild(diffBtn);
-}
-
-async function designGenericCheckoutScreen(frame: FrameNode, screenId: string, contentWidth: number, padding: number, height: number) {
-  let y = 20;
-
-  const header = createScreenHeader(formatScreenName(screenId), "");
-  header.x = padding;
-  header.y = y;
-  frame.appendChild(header);
-  y += 70;
-
-  const form = createFormContainer(contentWidth);
-  form.x = padding;
-  form.y = y;
-  form.appendChild(createLabeledInput("Field", "Enter value", contentWidth));
-  form.appendChild(createButton("Continue", "primary", contentWidth));
-  frame.appendChild(form);
-}
-
-// ============================================================
-// ONBOARDING SCREENS
-// ============================================================
-
-async function designOnboardingScreen(frame: FrameNode, screenId: string, width: number, height: number) {
-  const padding = 24;
-  const contentWidth = Math.min(width - padding * 2, 320);
-  const centerX = width / 2;
-
-  if (screenId === "welcome" || screenId === "intro") {
-    await designWelcomeScreen(frame, contentWidth, centerX, height);
-  } else if (screenId === "profile" || screenId === "profile-setup") {
-    await designProfileSetupScreen(frame, contentWidth, centerX, height);
-  } else if (screenId === "preferences") {
-    await designPreferencesScreen(frame, contentWidth, centerX, height);
-  } else if (screenId === "completion" || screenId === "done" || screenId === "success") {
-    await designOnboardingCompleteScreen(frame, contentWidth, centerX, height);
-  } else if (screenId === "skip" || screenId === "skip-confirmation") {
-    await designSkipConfirmationScreen(frame, contentWidth, centerX, height);
-  } else {
-    await designGenericOnboardingScreen(frame, screenId, contentWidth, centerX, height);
-  }
-}
-
-async function designWelcomeScreen(frame: FrameNode, contentWidth: number, centerX: number, height: number) {
-  let y = 100;
-
-  // App icon/logo
-  const logo = createLogoPlaceholder();
-  logo.resize(64, 64);
-  logo.cornerRadius = 16;
-  logo.x = centerX - 32;
-  logo.y = y;
-  frame.appendChild(logo);
-  y += 84;
-
-  // Title
-  const title = createText("Welcome to App", 28, "Bold", COLORS.foreground);
-  title.x = centerX - title.width / 2;
-  title.y = y;
-  frame.appendChild(title);
-  y += 44;
-
-  // Description
-  const desc = createText("Your journey to amazing things\nstarts here.", 16, "Regular", COLORS.mutedForeground);
-  desc.textAlignHorizontal = "CENTER";
-  desc.x = centerX - desc.width / 2;
-  desc.y = y;
-  frame.appendChild(desc);
-
-  // Get started button
-  const startBtn = createButton("Get Started", "primary", contentWidth);
-  startBtn.x = centerX - contentWidth / 2;
-  startBtn.y = height - 120;
-  frame.appendChild(startBtn);
-
-  // Sign in link
-  const signInText = createText("Already have an account? Sign in", 14, "Regular", COLORS.mutedForeground);
-  signInText.x = centerX - signInText.width / 2;
-  signInText.y = height - 60;
-  frame.appendChild(signInText);
-}
-
-async function designProfileSetupScreen(frame: FrameNode, contentWidth: number, centerX: number, height: number) {
-  let y = 60;
-
-  // Step indicator
-  const step = createText("Step 1 of 3", 12, "Medium", COLORS.mutedForeground);
-  step.x = centerX - step.width / 2;
-  step.y = y;
-  frame.appendChild(step);
-  y += 30;
-
-  // Title
-  const title = createText("Set up your profile", 24, "Semi Bold", COLORS.foreground);
-  title.x = centerX - title.width / 2;
-  title.y = y;
-  frame.appendChild(title);
-  y += 50;
-
-  // Avatar
-  const avatar = createAvatarUpload();
-  avatar.x = centerX - 48;
-  avatar.y = y;
-  frame.appendChild(avatar);
-  y += 116;
-
-  // Form
-  const form = createFormContainer(contentWidth);
-  form.x = centerX - contentWidth / 2;
-  form.y = y;
-
-  form.appendChild(createLabeledInput("Display name", "What should we call you?", contentWidth));
-  form.appendChild(createLabeledInput("Bio", "Tell us about yourself (optional)", contentWidth));
-
-  frame.appendChild(form);
-
-  // Continue button
-  const continueBtn = createButton("Continue", "primary", contentWidth);
-  continueBtn.x = centerX - contentWidth / 2;
-  continueBtn.y = height - 120;
-  frame.appendChild(continueBtn);
-
-  // Skip
-  const skipText = createText("Skip for now", 14, "Medium", COLORS.mutedForeground);
-  skipText.x = centerX - skipText.width / 2;
-  skipText.y = height - 60;
-  frame.appendChild(skipText);
-}
-
-async function designPreferencesScreen(frame: FrameNode, contentWidth: number, centerX: number, height: number) {
-  let y = 60;
-
-  // Step indicator
-  const step = createText("Step 2 of 3", 12, "Medium", COLORS.mutedForeground);
-  step.x = centerX - step.width / 2;
-  step.y = y;
-  frame.appendChild(step);
-  y += 30;
-
-  // Title
-  const title = createText("Your preferences", 24, "Semi Bold", COLORS.foreground);
-  title.x = centerX - title.width / 2;
-  title.y = y;
-  frame.appendChild(title);
-  y += 16;
-
-  // Subtitle
-  const subtitle = createText("Customize your experience", 14, "Regular", COLORS.mutedForeground);
-  subtitle.x = centerX - subtitle.width / 2;
-  subtitle.y = y;
-  frame.appendChild(subtitle);
-  y += 50;
-
-  // Preference switches
-  const prefsContainer = figma.createFrame();
-  prefsContainer.name = "preferences";
-  prefsContainer.layoutMode = "VERTICAL";
-  prefsContainer.primaryAxisSizingMode = "AUTO";
-  prefsContainer.counterAxisSizingMode = "FIXED";
-  prefsContainer.resize(contentWidth, 100);
-  prefsContainer.itemSpacing = 0;
-  prefsContainer.fills = [];
-
-  prefsContainer.appendChild(createPreferenceRow("Email notifications", "Receive updates via email", true));
-  prefsContainer.appendChild(createPreferenceRow("Push notifications", "Get notified on your device", true));
-  prefsContainer.appendChild(createPreferenceRow("Dark mode", "Use dark color theme", false));
-  prefsContainer.appendChild(createPreferenceRow("Analytics", "Help us improve the app", false));
-
-  prefsContainer.x = centerX - contentWidth / 2;
-  prefsContainer.y = y;
-  frame.appendChild(prefsContainer);
-
-  // Continue button
-  const continueBtn = createButton("Continue", "primary", contentWidth);
-  continueBtn.x = centerX - contentWidth / 2;
-  continueBtn.y = height - 120;
-  frame.appendChild(continueBtn);
-
-  // Skip
-  const skipText = createText("Skip for now", 14, "Medium", COLORS.mutedForeground);
-  skipText.x = centerX - skipText.width / 2;
-  skipText.y = height - 60;
-  frame.appendChild(skipText);
-}
-
-async function designOnboardingCompleteScreen(frame: FrameNode, contentWidth: number, centerX: number, height: number) {
-  let y = 140;
-
-  // Success icon with animation feel
-  const icon = createIconCircle("✓", COLORS.success);
-  icon.resize(64, 64);
-  icon.x = centerX - 32;
-  icon.y = y;
-  frame.appendChild(icon);
-  y += 84;
-
-  // Title
-  const title = createText("You're all set!", 28, "Bold", COLORS.foreground);
-  title.x = centerX - title.width / 2;
-  title.y = y;
-  frame.appendChild(title);
-  y += 44;
-
-  // Description
-  const desc = createText("Your account is ready.\nLet's start exploring!", 16, "Regular", COLORS.mutedForeground);
-  desc.textAlignHorizontal = "CENTER";
-  desc.x = centerX - desc.width / 2;
-  desc.y = y;
-  frame.appendChild(desc);
-
-  // Start button
-  const startBtn = createButton("Start Exploring", "primary", contentWidth);
-  startBtn.x = centerX - contentWidth / 2;
-  startBtn.y = height - 70;
-  frame.appendChild(startBtn);
-}
-
-async function designSkipConfirmationScreen(frame: FrameNode, contentWidth: number, centerX: number, height: number) {
-  // Dialog overlay effect
-  frame.fills = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.5 }];
-
-  // Dialog card
-  const dialog = figma.createFrame();
-  dialog.name = "dialog";
-  dialog.layoutMode = "VERTICAL";
-  dialog.primaryAxisSizingMode = "AUTO";
-  dialog.counterAxisSizingMode = "FIXED";
-  dialog.resize(contentWidth, 100);
-  dialog.paddingLeft = 24;
-  dialog.paddingRight = 24;
-  dialog.paddingTop = 24;
-  dialog.paddingBottom = 24;
-  dialog.itemSpacing = 16;
-  dialog.cornerRadius = 12;
-  dialog.fills = [{ type: "SOLID", color: COLORS.background }];
-
-  // Title
-  const title = createText("Skip setup?", 18, "Semi Bold", COLORS.foreground);
-  dialog.appendChild(title);
-
-  // Description
-  const desc = createText("You can always complete your profile later in settings.", 14, "Regular", COLORS.mutedForeground);
-  desc.resize(contentWidth - 48, desc.height);
-  desc.textAutoResize = "HEIGHT";
-  dialog.appendChild(desc);
-
-  // Buttons
-  const buttons = figma.createFrame();
-  buttons.name = "buttons";
-  buttons.layoutMode = "HORIZONTAL";
-  buttons.primaryAxisSizingMode = "AUTO";
-  buttons.counterAxisSizingMode = "AUTO";
-  buttons.itemSpacing = 12;
-  buttons.fills = [];
-
-  const cancelBtn = createButton("Go Back", "outline", 120);
-  buttons.appendChild(cancelBtn);
-
-  const skipBtn = createButton("Skip", "primary", 120);
-  buttons.appendChild(skipBtn);
-
-  dialog.appendChild(buttons);
-
-  dialog.x = centerX - contentWidth / 2;
-  dialog.y = height / 2 - dialog.height / 2;
-  frame.appendChild(dialog);
-}
-
-async function designGenericOnboardingScreen(frame: FrameNode, screenId: string, contentWidth: number, centerX: number, height: number) {
-  let y = 80;
-
-  const title = createText(formatScreenName(screenId), 24, "Semi Bold", COLORS.foreground);
-  title.x = centerX - title.width / 2;
-  title.y = y;
-  frame.appendChild(title);
-  y += 50;
-
-  const form = createFormContainer(contentWidth);
-  form.x = centerX - contentWidth / 2;
-  form.y = y;
-  form.appendChild(createLabeledInput("Field", "Enter value", contentWidth));
-  form.appendChild(createButton("Continue", "primary", contentWidth));
-  frame.appendChild(form);
-}
-
-// ============================================================
-// CRUD SCREENS
-// ============================================================
-
-async function designCrudScreen(frame: FrameNode, screenId: string, width: number, height: number) {
-  const padding = 20;
-  const contentWidth = width - padding * 2;
+async function designCrudScreenEnhanced(frame: FrameNode, screenId: string, context: DesignContext) {
+  const { padding, contentWidth, centerX, height } = context;
 
   if (screenId === "list" || screenId === "index") {
-    await designListScreen(frame, contentWidth, padding, height);
+    await designListScreenEnhanced(frame, context);
   } else if (screenId === "detail" || screenId === "view" || screenId === "show") {
-    await designDetailScreen(frame, contentWidth, padding, height);
+    await designDetailScreenEnhanced(frame, context);
   } else if (screenId === "create" || screenId === "new" || screenId === "add") {
-    await designCreateScreen(frame, contentWidth, padding, height);
+    await designCreateScreenEnhanced(frame, context);
   } else if (screenId === "edit" || screenId === "update") {
-    await designEditScreen(frame, contentWidth, padding, height);
+    await designEditScreenEnhanced(frame, context);
   } else if (screenId === "delete" || screenId === "delete-confirmation") {
-    await designDeleteConfirmationScreen(frame, contentWidth, width / 2, height);
+    await designDeleteConfirmationScreenEnhanced(frame, context);
   } else if (screenId === "empty" || screenId === "empty-state") {
-    await designEmptyStateScreen(frame, contentWidth, width / 2, height);
+    await designEmptyStateScreenEnhanced(frame, context);
   } else {
-    await designGenericCrudScreen(frame, screenId, contentWidth, padding, height);
+    await designGenericCrudScreenEnhanced(frame, screenId, context);
   }
 }
 
-async function designListScreen(frame: FrameNode, contentWidth: number, padding: number, height: number) {
+async function designListScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { padding, contentWidth } = context;
   let y = 20;
 
   // Header with title and add button
@@ -3017,7 +2510,7 @@ async function designListScreen(frame: FrameNode, contentWidth: number, padding:
   const title = createText("Items", 24, "Bold", COLORS.foreground);
   header.appendChild(title);
 
-  const addBtn = createButton("+ Add New", "primary", 100);
+  const addBtn = await createButtonFromAnalysis(context, "+ Add New", "primary", 100);
   header.appendChild(addBtn);
 
   header.x = padding;
@@ -3039,7 +2532,8 @@ async function designListScreen(frame: FrameNode, contentWidth: number, padding:
   frame.appendChild(table);
 }
 
-async function designDetailScreen(frame: FrameNode, contentWidth: number, padding: number, height: number) {
+async function designDetailScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { padding, contentWidth, height } = context;
   let y = 20;
 
   // Back button
@@ -3063,7 +2557,7 @@ async function designDetailScreen(frame: FrameNode, contentWidth: number, paddin
   const title = createText("Item Details", 24, "Bold", COLORS.foreground);
   header.appendChild(title);
 
-  const editBtn = createButton("Edit", "outline", 80);
+  const editBtn = await createButtonFromAnalysis(context, "Edit", "outline", 80);
   header.appendChild(editBtn);
 
   header.x = padding;
@@ -3098,13 +2592,14 @@ async function designDetailScreen(frame: FrameNode, contentWidth: number, paddin
   frame.appendChild(card);
 
   // Delete button at bottom
-  const deleteBtn = createButton("Delete Item", "destructive", contentWidth);
+  const deleteBtn = await createButtonFromAnalysis(context, "Delete Item", "destructive", contentWidth);
   deleteBtn.x = padding;
   deleteBtn.y = height - 70;
   frame.appendChild(deleteBtn);
 }
 
-async function designCreateScreen(frame: FrameNode, contentWidth: number, padding: number, height: number) {
+async function designCreateScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { padding, contentWidth, height } = context;
   let y = 20;
 
   // Header
@@ -3119,26 +2614,27 @@ async function designCreateScreen(frame: FrameNode, contentWidth: number, paddin
   form.x = padding;
   form.y = y;
 
-  form.appendChild(createLabeledInput("Name", "Enter item name", contentWidth));
-  form.appendChild(createLabeledInput("Description", "Enter description", contentWidth));
-  form.appendChild(createLabeledSelect("Status", "Select status", contentWidth));
-  form.appendChild(createLabeledSelect("Category", "Select category", contentWidth));
+  form.appendChild(await createInputFromAnalysis(context, "Name", "Enter item name", contentWidth));
+  form.appendChild(await createInputFromAnalysis(context, "Description", "Enter description", contentWidth));
+  form.appendChild(await createSelectFromAnalysis(context, "Status", "Select status", contentWidth));
+  form.appendChild(await createSelectFromAnalysis(context, "Category", "Select category", contentWidth));
 
   frame.appendChild(form);
 
-  // Buttons at bottom
-  const cancelBtn = createButton("Cancel", "outline", contentWidth);
+  // Buttons at bottom - Cancel (secondary) above, Create (primary) below
+  const cancelBtn = await createButtonFromAnalysis(context, "Cancel", "outline", contentWidth);
   cancelBtn.x = padding;
   cancelBtn.y = height - 122;
   frame.appendChild(cancelBtn);
 
-  const createBtn = createButton("Create Item", "primary", contentWidth);
+  const createBtn = await createButtonFromAnalysis(context, "Create Item", "primary", contentWidth);
   createBtn.x = padding;
   createBtn.y = height - 66;
   frame.appendChild(createBtn);
 }
 
-async function designEditScreen(frame: FrameNode, contentWidth: number, padding: number, height: number) {
+async function designEditScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { padding, contentWidth, height } = context;
   let y = 20;
 
   // Header
@@ -3153,26 +2649,28 @@ async function designEditScreen(frame: FrameNode, contentWidth: number, padding:
   form.x = padding;
   form.y = y;
 
-  form.appendChild(createLabeledInputWithValue("Name", "Sample Item", contentWidth));
-  form.appendChild(createLabeledInputWithValue("Description", "This is a sample item", contentWidth));
-  form.appendChild(createLabeledSelect("Status", "Active", contentWidth));
-  form.appendChild(createLabeledSelect("Category", "General", contentWidth));
+  form.appendChild(await createInputFromAnalysis(context, "Name", "Enter item name", contentWidth, "Sample Item"));
+  form.appendChild(await createInputFromAnalysis(context, "Description", "Enter description", contentWidth, "This is a sample item"));
+  form.appendChild(await createSelectFromAnalysis(context, "Status", "Active", contentWidth));
+  form.appendChild(await createSelectFromAnalysis(context, "Category", "General", contentWidth));
 
   frame.appendChild(form);
 
-  // Buttons
-  const cancelBtn = createButton("Cancel", "outline", contentWidth);
+  // Buttons - Cancel (secondary) above, Save (primary) below
+  const cancelBtn = await createButtonFromAnalysis(context, "Cancel", "outline", contentWidth);
   cancelBtn.x = padding;
   cancelBtn.y = height - 122;
   frame.appendChild(cancelBtn);
 
-  const saveBtn = createButton("Save Changes", "primary", contentWidth);
+  const saveBtn = await createButtonFromAnalysis(context, "Save Changes", "primary", contentWidth);
   saveBtn.x = padding;
   saveBtn.y = height - 66;
   frame.appendChild(saveBtn);
 }
 
-async function designDeleteConfirmationScreen(frame: FrameNode, contentWidth: number, centerX: number, height: number) {
+async function designDeleteConfirmationScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { contentWidth, centerX, height } = context;
+
   // Overlay
   frame.fills = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 0.5 }];
 
@@ -3211,7 +2709,7 @@ async function designDeleteConfirmationScreen(frame: FrameNode, contentWidth: nu
   desc.textAutoResize = "HEIGHT";
   dialog.appendChild(desc);
 
-  // Buttons
+  // Buttons - horizontal row: Cancel (outline) left, Delete (destructive) right
   const buttons = figma.createFrame();
   buttons.name = "buttons";
   buttons.layoutMode = "HORIZONTAL";
@@ -3220,10 +2718,10 @@ async function designDeleteConfirmationScreen(frame: FrameNode, contentWidth: nu
   buttons.itemSpacing = 12;
   buttons.fills = [];
 
-  const cancelBtn = createButton("Cancel", "outline", 100);
+  const cancelBtn = await createButtonFromAnalysis(context, "Cancel", "outline", 100);
   buttons.appendChild(cancelBtn);
 
-  const deleteBtn = createButton("Delete", "destructive", 100);
+  const deleteBtn = await createButtonFromAnalysis(context, "Delete", "destructive", 100);
   buttons.appendChild(deleteBtn);
 
   dialog.appendChild(buttons);
@@ -3233,7 +2731,8 @@ async function designDeleteConfirmationScreen(frame: FrameNode, contentWidth: nu
   frame.appendChild(dialog);
 }
 
-async function designEmptyStateScreen(frame: FrameNode, contentWidth: number, centerX: number, height: number) {
+async function designEmptyStateScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { contentWidth, centerX, height } = context;
   let y = height / 2 - 100;
 
   // Empty state illustration (placeholder)
@@ -3263,14 +2762,15 @@ async function designEmptyStateScreen(frame: FrameNode, contentWidth: number, ce
   frame.appendChild(desc);
   y += 40;
 
-  // CTA button
-  const ctaBtn = createButton("+ Create Item", "primary", 160);
+  // CTA button - uses component library
+  const ctaBtn = await createButtonFromAnalysis(context, "+ Create Item", "primary", 160);
   ctaBtn.x = centerX - 80;
   ctaBtn.y = y;
   frame.appendChild(ctaBtn);
 }
 
-async function designGenericCrudScreen(frame: FrameNode, screenId: string, contentWidth: number, padding: number, height: number) {
+async function designGenericCrudScreenEnhanced(frame: FrameNode, screenId: string, context: DesignContext) {
+  const { padding, contentWidth } = context;
   let y = 20;
 
   const header = createScreenHeader(formatScreenName(screenId), "");
@@ -3282,51 +2782,315 @@ async function designGenericCrudScreen(frame: FrameNode, screenId: string, conte
   const form = createFormContainer(contentWidth);
   form.x = padding;
   form.y = y;
-  form.appendChild(createLabeledInput("Field", "Enter value", contentWidth));
-  form.appendChild(createButton("Submit", "primary", contentWidth));
+  form.appendChild(await createInputFromAnalysis(context, "Field", "Enter value", contentWidth));
+
+  const submitBtn = await createButtonFromAnalysis(context, "Submit", "primary", contentWidth);
+  form.appendChild(submitBtn);
   frame.appendChild(form);
 }
 
 // ============================================================
-// SEARCH SCREENS
+// CHECKOUT SCREENS - ENHANCED (with component library)
 // ============================================================
 
-async function designSearchScreen(frame: FrameNode, screenId: string, width: number, height: number) {
-  const padding = 20;
-  const contentWidth = width - padding * 2;
-  const centerX = width / 2;
+async function designCheckoutScreenEnhanced(frame: FrameNode, screenId: string, context: DesignContext) {
+  const { padding, contentWidth, centerX, height } = context;
 
-  if (screenId === "search" || screenId === "search-input") {
-    await designSearchInputScreen(frame, contentWidth, padding, height);
-  } else if (screenId === "results" || screenId === "search-results") {
-    await designSearchResultsScreen(frame, contentWidth, padding, height);
-  } else if (screenId === "no-results" || screenId === "empty") {
-    await designNoResultsScreen(frame, contentWidth, centerX, height);
-  } else if (screenId === "filters") {
-    await designFiltersScreen(frame, contentWidth, padding, height);
+  if (screenId === "cart" || screenId === "shopping-cart") {
+    await designCartScreenEnhanced(frame, context);
+  } else if (screenId === "shipping" || screenId === "address") {
+    await designShippingScreenEnhanced(frame, context);
+  } else if (screenId === "payment") {
+    await designPaymentScreenEnhanced(frame, context);
+  } else if (screenId === "review" || screenId === "order-review") {
+    await designOrderReviewScreenEnhanced(frame, context);
+  } else if (screenId === "confirmation" || screenId === "success") {
+    await designOrderConfirmationScreenEnhanced(frame, context);
+  } else if (screenId === "error") {
+    await designCheckoutErrorScreenEnhanced(frame, context);
   } else {
-    await designGenericSearchScreen(frame, screenId, contentWidth, padding, height);
+    await designGenericCheckoutScreenEnhanced(frame, screenId, context);
   }
 }
 
-async function designSearchInputScreen(frame: FrameNode, contentWidth: number, padding: number, height: number) {
+async function designCartScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { padding, contentWidth, height } = context;
   let y = 20;
 
-  // Search bar
+  const header = createScreenHeader("Shopping Cart", "3 items");
+  header.x = padding;
+  header.y = y;
+  header.resize(contentWidth, header.height);
+  frame.appendChild(header);
+  y += 70;
+
+  // Cart items
+  for (let i = 0; i < 2; i++) {
+    const item = createCartItem(`Item ${i + 1}`, `$${(29.99 + i * 10).toFixed(2)}`, contentWidth);
+    item.x = padding;
+    item.y = y;
+    frame.appendChild(item);
+    y += 90;
+  }
+
+  // Summary
+  const summary = createOrderSummary(contentWidth, 59.98, 5.99, 65.97);
+  summary.x = padding;
+  summary.y = height - 200;
+  frame.appendChild(summary);
+
+  // Checkout button
+  const checkoutBtn = await createButtonFromAnalysis(context, "Proceed to Checkout", "primary", contentWidth);
+  checkoutBtn.x = padding;
+  checkoutBtn.y = height - 66;
+  frame.appendChild(checkoutBtn);
+}
+
+async function designShippingScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { padding, contentWidth, height } = context;
+  let y = 20;
+
+  const header = createScreenHeader("Shipping Address", "Step 1 of 3");
+  header.x = padding;
+  header.y = y;
+  frame.appendChild(header);
+  y += 70;
+
+  const form = createFormContainer(contentWidth);
+  form.x = padding;
+  form.y = y;
+
+  form.appendChild(await createInputFromAnalysis(context, "Full Name", "Enter your name", contentWidth));
+  form.appendChild(await createInputFromAnalysis(context, "Address", "Street address", contentWidth));
+  form.appendChild(await createInputFromAnalysis(context, "City", "City", contentWidth));
+
+  const row = figma.createFrame();
+  row.layoutMode = "HORIZONTAL";
+  row.primaryAxisSizingMode = "FIXED";
+  row.counterAxisSizingMode = "AUTO";
+  row.resize(contentWidth, 70);
+  row.itemSpacing = 16;
+  row.fills = [];
+  row.appendChild(await createInputFromAnalysis(context, "State", "State", (contentWidth - 16) / 2));
+  row.appendChild(await createInputFromAnalysis(context, "ZIP", "ZIP code", (contentWidth - 16) / 2));
+  form.appendChild(row);
+
+  frame.appendChild(form);
+
+  const continueBtn = await createButtonFromAnalysis(context, "Continue to Payment", "primary", contentWidth);
+  continueBtn.x = padding;
+  continueBtn.y = height - 66;
+  frame.appendChild(continueBtn);
+}
+
+async function designPaymentScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { padding, contentWidth, height } = context;
+  let y = 20;
+
+  const header = createScreenHeader("Payment", "Step 2 of 3");
+  header.x = padding;
+  header.y = y;
+  frame.appendChild(header);
+  y += 70;
+
+  const form = createFormContainer(contentWidth);
+  form.x = padding;
+  form.y = y;
+
+  form.appendChild(await createInputFromAnalysis(context, "Card Number", "1234 5678 9012 3456", contentWidth));
+
+  const row = figma.createFrame();
+  row.layoutMode = "HORIZONTAL";
+  row.primaryAxisSizingMode = "FIXED";
+  row.counterAxisSizingMode = "AUTO";
+  row.resize(contentWidth, 70);
+  row.itemSpacing = 16;
+  row.fills = [];
+  row.appendChild(await createInputFromAnalysis(context, "Expiry", "MM/YY", (contentWidth - 16) / 2));
+  row.appendChild(await createInputFromAnalysis(context, "CVC", "123", (contentWidth - 16) / 2));
+  form.appendChild(row);
+
+  form.appendChild(await createInputFromAnalysis(context, "Name on Card", "John Doe", contentWidth));
+
+  frame.appendChild(form);
+
+  const payBtn = await createButtonFromAnalysis(context, "Review Order", "primary", contentWidth);
+  payBtn.x = padding;
+  payBtn.y = height - 66;
+  frame.appendChild(payBtn);
+}
+
+async function designOrderReviewScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { padding, contentWidth, height } = context;
+  let y = 20;
+
+  const header = createScreenHeader("Review Order", "Step 3 of 3");
+  header.x = padding;
+  header.y = y;
+  frame.appendChild(header);
+  y += 70;
+
+  // Shipping info card
+  const shippingCard = createInfoCard("Shipping", "John Doe\n123 Main St\nNew York, NY 10001", contentWidth);
+  shippingCard.x = padding;
+  shippingCard.y = y;
+  frame.appendChild(shippingCard);
+  y += shippingCard.height + 16;
+
+  // Payment info card
+  const paymentCard = createInfoCard("Payment", "Visa ending in 3456", contentWidth);
+  paymentCard.x = padding;
+  paymentCard.y = y;
+  frame.appendChild(paymentCard);
+  y += paymentCard.height + 16;
+
+  // Order summary
+  const summary = createOrderSummary(contentWidth, 59.98, 5.99, 65.97);
+  summary.x = padding;
+  summary.y = height - 200;
+  frame.appendChild(summary);
+
+  // Place order button
+  const placeOrderBtn = await createButtonFromAnalysis(context, "Place Order", "primary", contentWidth);
+  placeOrderBtn.x = padding;
+  placeOrderBtn.y = height - 66;
+  frame.appendChild(placeOrderBtn);
+}
+
+async function designOrderConfirmationScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { contentWidth, centerX, height } = context;
+  let y = 120;
+
+  const icon = createIconCircle("✓", COLORS.success);
+  icon.x = centerX - 28;
+  icon.y = y;
+  frame.appendChild(icon);
+  y += 76;
+
+  const title = createText("Order Confirmed!", 24, "Semi Bold", COLORS.foreground);
+  title.x = centerX - title.width / 2;
+  title.y = y;
+  frame.appendChild(title);
+  y += 36;
+
+  const orderNum = createText("Order #12345", 16, "Medium", COLORS.primary);
+  orderNum.x = centerX - orderNum.width / 2;
+  orderNum.y = y;
+  frame.appendChild(orderNum);
+  y += 28;
+
+  const desc = createText("Thank you for your purchase! You'll receive\na confirmation email shortly.", 14, "Regular", COLORS.mutedForeground);
+  desc.textAlignHorizontal = "CENTER";
+  desc.x = centerX - desc.width / 2;
+  desc.y = y;
+  frame.appendChild(desc);
+  y += 60;
+
+  const deliveryCard = createSummaryCard("Estimated Delivery", "March 15-18, 2024", Math.min(contentWidth, 280));
+  deliveryCard.x = centerX - deliveryCard.width / 2;
+  deliveryCard.y = y;
+  frame.appendChild(deliveryCard);
+  y += deliveryCard.height + 24;
+
+  const continueBtn = await createButtonFromAnalysis(context, "Continue Shopping", "primary", Math.min(contentWidth, 280));
+  continueBtn.x = centerX - continueBtn.width / 2;
+  continueBtn.y = y;
+  frame.appendChild(continueBtn);
+}
+
+async function designCheckoutErrorScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { contentWidth, centerX, height } = context;
+  let y = 120;
+
+  const icon = createIconCircle("!", COLORS.destructive);
+  icon.x = centerX - 28;
+  icon.y = y;
+  frame.appendChild(icon);
+  y += 76;
+
+  const title = createText("Payment Failed", 24, "Semi Bold", COLORS.foreground);
+  title.x = centerX - title.width / 2;
+  title.y = y;
+  frame.appendChild(title);
+  y += 36;
+
+  const desc = createText("Your payment could not be processed.\nPlease try again or use a different payment method.", 14, "Regular", COLORS.mutedForeground);
+  desc.textAlignHorizontal = "CENTER";
+  desc.x = centerX - desc.width / 2;
+  desc.y = y;
+  frame.appendChild(desc);
+  y += 80;
+
+  const retryBtn = await createButtonFromAnalysis(context, "Try Again", "primary", Math.min(contentWidth, 280));
+  retryBtn.x = centerX - retryBtn.width / 2;
+  retryBtn.y = y;
+  frame.appendChild(retryBtn);
+  y += 56;
+
+  const changeBtn = await createButtonFromAnalysis(context, "Change Payment Method", "outline", Math.min(contentWidth, 280));
+  changeBtn.x = centerX - changeBtn.width / 2;
+  changeBtn.y = y;
+  frame.appendChild(changeBtn);
+}
+
+async function designGenericCheckoutScreenEnhanced(frame: FrameNode, screenId: string, context: DesignContext) {
+  const { padding, contentWidth, height } = context;
+  let y = 20;
+
+  const header = createScreenHeader(formatScreenName(screenId), "");
+  header.x = padding;
+  header.y = y;
+  frame.appendChild(header);
+  y += 70;
+
+  const form = createFormContainer(contentWidth);
+  form.x = padding;
+  form.y = y;
+  form.appendChild(await createInputFromAnalysis(context, "Field", "Enter value", contentWidth));
+  frame.appendChild(form);
+
+  const continueBtn = await createButtonFromAnalysis(context, "Continue", "primary", contentWidth);
+  continueBtn.x = padding;
+  continueBtn.y = height - 66;
+  frame.appendChild(continueBtn);
+}
+
+// ============================================================
+// SEARCH SCREENS - ENHANCED (with component library)
+// ============================================================
+
+async function designSearchScreenEnhanced(frame: FrameNode, screenId: string, context: DesignContext) {
+  const { padding, contentWidth, centerX, height } = context;
+
+  if (screenId === "search" || screenId === "search-input") {
+    await designSearchInputScreenEnhanced(frame, context);
+  } else if (screenId === "results" || screenId === "search-results") {
+    await designSearchResultsScreenEnhanced(frame, context);
+  } else if (screenId === "no-results" || screenId === "empty") {
+    await designNoResultsScreenEnhanced(frame, context);
+  } else if (screenId === "filters") {
+    await designFiltersScreenEnhanced(frame, context);
+  } else {
+    await designGenericSearchScreenEnhanced(frame, screenId, context);
+  }
+}
+
+async function designSearchInputScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { padding, contentWidth } = context;
+  let y = 20;
+
   const searchBar = createSearchInput(contentWidth);
   searchBar.x = padding;
   searchBar.y = y;
   frame.appendChild(searchBar);
   y += 60;
 
-  // Recent searches
   const recentLabel = createText("Recent Searches", 14, "Semi Bold", COLORS.foreground);
   recentLabel.x = padding;
   recentLabel.y = y;
   frame.appendChild(recentLabel);
   y += 32;
 
-  // Recent items
   for (const term of ["Mobile app design", "Dashboard UI", "Landing page"]) {
     const item = createRecentSearchItem(term, contentWidth);
     item.x = padding;
@@ -3336,17 +3100,16 @@ async function designSearchInputScreen(frame: FrameNode, contentWidth: number, p
   }
 }
 
-async function designSearchResultsScreen(frame: FrameNode, contentWidth: number, padding: number, height: number) {
+async function designSearchResultsScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { padding, contentWidth } = context;
   let y = 20;
 
-  // Search bar with query
   const searchBar = createSearchInputWithValue(contentWidth, "design templates");
   searchBar.x = padding;
   searchBar.y = y;
   frame.appendChild(searchBar);
   y += 56;
 
-  // Results count and filter
   const resultsHeader = figma.createFrame();
   resultsHeader.name = "results-header";
   resultsHeader.layoutMode = "HORIZONTAL";
@@ -3368,9 +3131,8 @@ async function designSearchResultsScreen(frame: FrameNode, contentWidth: number,
   frame.appendChild(resultsHeader);
   y += 40;
 
-  // Result cards
   for (let i = 0; i < 3; i++) {
-    const card = createSearchResultCard(contentWidth, `Result ${i + 1}`, "Description of the search result item goes here.");
+    const card = createSearchResultCard(`Result ${i + 1}`, "Description text here", contentWidth);
     card.x = padding;
     card.y = y;
     frame.appendChild(card);
@@ -3378,18 +3140,27 @@ async function designSearchResultsScreen(frame: FrameNode, contentWidth: number,
   }
 }
 
-async function designNoResultsScreen(frame: FrameNode, contentWidth: number, centerX: number, height: number) {
-  let y = 60;
+async function designGenericSearchScreenEnhanced(frame: FrameNode, screenId: string, context: DesignContext) {
+  const { padding, contentWidth, height } = context;
+  let y = 20;
 
-  // Search bar
-  const searchBar = createSearchInputWithValue(contentWidth, "asdfghjkl");
-  searchBar.x = centerX - contentWidth / 2;
+  const searchBar = createSearchInput(contentWidth);
+  searchBar.x = padding;
   searchBar.y = y;
   frame.appendChild(searchBar);
-  y = height / 2 - 80;
+  y += 60;
 
-  // Empty state
-  const icon = createIconCircle("🔍", COLORS.mutedForeground);
+  const content = createText(`${formatScreenName(screenId)} content`, 14, "Regular", COLORS.mutedForeground);
+  content.x = padding;
+  content.y = y;
+  frame.appendChild(content);
+}
+
+async function designNoResultsScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { contentWidth, centerX, height } = context;
+  let y = 120;
+
+  const icon = createIconCircle("?", COLORS.mutedForeground);
   icon.x = centerX - 28;
   icon.y = y;
   frame.appendChild(icon);
@@ -3401,24 +3172,24 @@ async function designNoResultsScreen(frame: FrameNode, contentWidth: number, cen
   frame.appendChild(title);
   y += 32;
 
-  const desc = createText("Try adjusting your search or filters", 14, "Regular", COLORS.mutedForeground);
+  const desc = createText("Try adjusting your search or filters\nto find what you're looking for.", 14, "Regular", COLORS.mutedForeground);
+  desc.textAlignHorizontal = "CENTER";
   desc.x = centerX - desc.width / 2;
   desc.y = y;
   frame.appendChild(desc);
-  y += 40;
+  y += 60;
 
-  const clearBtn = createButton("Clear Search", "outline", 140);
-  clearBtn.x = centerX - 70;
+  const clearBtn = await createButtonFromAnalysis(context, "Clear Filters", "outline", 160);
+  clearBtn.x = centerX - 80;
   clearBtn.y = y;
   frame.appendChild(clearBtn);
 }
 
-async function designFiltersScreen(frame: FrameNode, contentWidth: number, padding: number, height: number) {
+async function designFiltersScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { padding, contentWidth, height } = context;
   let y = 20;
 
-  // Header
   const header = figma.createFrame();
-  header.name = "header";
   header.layoutMode = "HORIZONTAL";
   header.primaryAxisSizingMode = "FIXED";
   header.counterAxisSizingMode = "AUTO";
@@ -3439,162 +3210,88 @@ async function designFiltersScreen(frame: FrameNode, contentWidth: number, paddi
   y += 60;
 
   // Filter sections
-  const sections = [
-    { title: "Category", options: ["All", "Design", "Development", "Marketing"] },
-    { title: "Date", options: ["Any time", "Past week", "Past month", "Past year"] },
-    { title: "Sort by", options: ["Relevance", "Newest", "Oldest", "Popular"] },
-  ];
+  const filterSection1 = createFilterSection("Category", ["All", "Design", "Development", "Marketing"], contentWidth);
+  filterSection1.x = padding;
+  filterSection1.y = y;
+  frame.appendChild(filterSection1);
+  y += filterSection1.height + 24;
 
-  for (const section of sections) {
-    const sectionTitle = createText(section.title, 14, "Semi Bold", COLORS.foreground);
-    sectionTitle.x = padding;
-    sectionTitle.y = y;
-    frame.appendChild(sectionTitle);
-    y += 28;
-
-    for (let i = 0; i < section.options.length; i++) {
-      const option = createRadioOption(section.options[i], i === 0, contentWidth);
-      option.x = padding;
-      option.y = y;
-      frame.appendChild(option);
-      y += 40;
-    }
-    y += 16;
-  }
+  const filterSection2 = createFilterSection("Price Range", ["Any", "Free", "$1-$50", "$50+"], contentWidth);
+  filterSection2.x = padding;
+  filterSection2.y = y;
+  frame.appendChild(filterSection2);
 
   // Apply button
-  const applyBtn = createButton("Apply Filters", "primary", contentWidth);
+  const applyBtn = await createButtonFromAnalysis(context, "Apply Filters", "primary", contentWidth);
   applyBtn.x = padding;
-  applyBtn.y = height - 70;
+  applyBtn.y = height - 66;
   frame.appendChild(applyBtn);
 }
 
-async function designGenericSearchScreen(frame: FrameNode, screenId: string, contentWidth: number, padding: number, height: number) {
+// ============================================================
+// SETTINGS SCREENS - ENHANCED (with component library)
+// ============================================================
+
+async function designSettingsScreenEnhanced(frame: FrameNode, screenId: string, context: DesignContext) {
+  const { padding, contentWidth, centerX, height } = context;
+
+  if (screenId === "settings" || screenId === "preferences") {
+    await designSettingsMainScreenEnhanced(frame, context);
+  } else if (screenId === "profile" || screenId === "account") {
+    await designProfileScreenEnhanced(frame, context);
+  } else if (screenId === "notifications") {
+    await designNotificationSettingsScreenEnhanced(frame, context);
+  } else if (screenId === "privacy" || screenId === "security") {
+    await designPrivacySettingsScreenEnhanced(frame, context);
+  } else if (screenId === "password" || screenId === "change-password") {
+    await designChangePasswordScreenEnhanced(frame, context);
+  } else if (screenId === "delete-account") {
+    await designDeleteAccountScreenEnhanced(frame, context);
+  } else {
+    await designGenericSettingsScreenEnhanced(frame, screenId, context);
+  }
+}
+
+async function designSettingsMainScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { padding, contentWidth } = context;
   let y = 20;
 
-  const searchBar = createSearchInput(contentWidth);
-  searchBar.x = padding;
-  searchBar.y = y;
-  frame.appendChild(searchBar);
+  const header = createScreenHeader("Settings", "");
+  header.x = padding;
+  header.y = y;
+  frame.appendChild(header);
   y += 60;
 
-  const title = createText(formatScreenName(screenId), 18, "Semi Bold", COLORS.foreground);
-  title.x = padding;
-  title.y = y;
-  frame.appendChild(title);
-}
-
-// ============================================================
-// SETTINGS SCREENS
-// ============================================================
-
-async function designSettingsScreen(frame: FrameNode, screenId: string, width: number, height: number) {
-  const padding = 20;
-  const contentWidth = width - padding * 2;
-  const centerX = width / 2;
-
-  if (screenId === "main" || screenId === "settings" || screenId === "index") {
-    await designMainSettingsScreen(frame, contentWidth, padding, height);
-  } else if (screenId === "account" || screenId === "profile") {
-    await designAccountSettingsScreen(frame, contentWidth, padding, height);
-  } else if (screenId === "notifications") {
-    await designNotificationSettingsScreen(frame, contentWidth, padding, height);
-  } else if (screenId === "security" || screenId === "privacy") {
-    await designSecuritySettingsScreen(frame, contentWidth, padding, height);
-  } else {
-    await designGenericSettingsScreen(frame, screenId, contentWidth, padding, height);
-  }
-}
-
-async function designMainSettingsScreen(frame: FrameNode, contentWidth: number, padding: number, height: number) {
-  let y = 20;
-
-  // Header
-  const title = createText("Settings", 24, "Bold", COLORS.foreground);
-  title.x = padding;
-  title.y = y;
-  frame.appendChild(title);
-  y += 50;
-
-  // Settings groups
-  const groups = [
-    {
-      title: "Account",
-      items: [
-        { icon: "👤", label: "Profile", subtitle: "Manage your profile" },
-        { icon: "🔔", label: "Notifications", subtitle: "Notification preferences" },
-        { icon: "🔒", label: "Security", subtitle: "Password and security" },
-      ],
-    },
-    {
-      title: "Preferences",
-      items: [
-        { icon: "🎨", label: "Appearance", subtitle: "Theme and display" },
-        { icon: "🌐", label: "Language", subtitle: "English (US)" },
-      ],
-    },
+  const sections = [
+    { title: "Account", items: ["Profile", "Email", "Password"] },
+    { title: "Preferences", items: ["Notifications", "Language", "Theme"] },
+    { title: "Privacy", items: ["Privacy Settings", "Security", "Data"] },
   ];
 
-  for (const group of groups) {
-    const groupTitle = createText(group.title, 12, "Medium", COLORS.mutedForeground);
-    groupTitle.x = padding;
-    groupTitle.y = y;
-    frame.appendChild(groupTitle);
-    y += 28;
-
-    for (const item of group.items) {
-      const row = createSettingsRow(item.icon, item.label, item.subtitle, contentWidth);
-      row.x = padding;
-      row.y = y;
-      frame.appendChild(row);
-      y += 64;
-    }
-    y += 16;
+  for (const section of sections) {
+    const sectionFrame = createSettingsSection(section.title, section.items, contentWidth);
+    sectionFrame.x = padding;
+    sectionFrame.y = y;
+    frame.appendChild(sectionFrame);
+    y += sectionFrame.height + 24;
   }
-
-  // Logout button
-  const logoutBtn = createButton("Log Out", "outline", contentWidth);
-  logoutBtn.x = padding;
-  logoutBtn.y = height - 70;
-  frame.appendChild(logoutBtn);
 }
 
-async function designAccountSettingsScreen(frame: FrameNode, contentWidth: number, padding: number, height: number) {
+async function designProfileScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { padding, contentWidth, height } = context;
   let y = 20;
 
-  // Back and title
-  const backBtn = createText("← Settings", 14, "Medium", COLORS.primary);
-  backBtn.x = padding;
-  backBtn.y = y;
-  frame.appendChild(backBtn);
-  y += 36;
+  const header = createScreenHeader("Profile", "");
+  header.x = padding;
+  header.y = y;
+  frame.appendChild(header);
+  y += 60;
 
-  const title = createText("Account", 24, "Bold", COLORS.foreground);
-  title.x = padding;
-  title.y = y;
-  frame.appendChild(title);
-  y += 50;
-
-  // Avatar section
-  const avatarSection = figma.createFrame();
-  avatarSection.name = "avatar-section";
-  avatarSection.layoutMode = "HORIZONTAL";
-  avatarSection.primaryAxisSizingMode = "AUTO";
-  avatarSection.counterAxisSizingMode = "AUTO";
-  avatarSection.itemSpacing = 16;
-  avatarSection.counterAxisAlignItems = "CENTER";
-  avatarSection.fills = [];
-
-  const avatar = createAvatarUpload();
-  avatar.resize(64, 64);
-  avatarSection.appendChild(avatar);
-
-  const changeBtn = createButton("Change Photo", "outline", 120);
-  avatarSection.appendChild(changeBtn);
-
-  avatarSection.x = padding;
-  avatarSection.y = y;
-  frame.appendChild(avatarSection);
+  // Avatar
+  const avatar = createAvatarPlaceholder(80);
+  avatar.x = context.centerX - 40;
+  avatar.y = y;
+  frame.appendChild(avatar);
   y += 100;
 
   // Form
@@ -3602,406 +3299,342 @@ async function designAccountSettingsScreen(frame: FrameNode, contentWidth: numbe
   form.x = padding;
   form.y = y;
 
-  form.appendChild(createLabeledInputWithValue("Name", "John Doe", contentWidth));
-  form.appendChild(createLabeledInputWithValue("Email", "john@example.com", contentWidth));
-  form.appendChild(createLabeledInputWithValue("Phone", "+1 (555) 000-0000", contentWidth));
+  form.appendChild(await createInputFromAnalysis(context, "Name", "Enter your name", contentWidth, "John Doe"));
+  form.appendChild(await createInputFromAnalysis(context, "Email", "Enter your email", contentWidth, "john@example.com"));
+  form.appendChild(await createInputFromAnalysis(context, "Phone", "Enter phone number", contentWidth, "+1 234 567 8900"));
 
   frame.appendChild(form);
 
   // Save button
-  const saveBtn = createButton("Save Changes", "primary", contentWidth);
+  const saveBtn = await createButtonFromAnalysis(context, "Save Changes", "primary", contentWidth);
   saveBtn.x = padding;
-  saveBtn.y = height - 70;
+  saveBtn.y = height - 66;
   frame.appendChild(saveBtn);
 }
 
-async function designNotificationSettingsScreen(frame: FrameNode, contentWidth: number, padding: number, height: number) {
+async function designNotificationSettingsScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { padding, contentWidth, height } = context;
   let y = 20;
 
-  // Back and title
-  const backBtn = createText("← Settings", 14, "Medium", COLORS.primary);
-  backBtn.x = padding;
-  backBtn.y = y;
-  frame.appendChild(backBtn);
-  y += 36;
+  const header = createScreenHeader("Notifications", "");
+  header.x = padding;
+  header.y = y;
+  frame.appendChild(header);
+  y += 60;
 
-  const title = createText("Notifications", 24, "Bold", COLORS.foreground);
-  title.x = padding;
-  title.y = y;
-  frame.appendChild(title);
-  y += 50;
+  const toggles = [
+    { label: "Push Notifications", enabled: true },
+    { label: "Email Notifications", enabled: true },
+    { label: "Marketing Emails", enabled: false },
+    { label: "Weekly Digest", enabled: true },
+  ];
 
-  // Notification toggles
-  const prefs = figma.createFrame();
-  prefs.name = "preferences";
-  prefs.layoutMode = "VERTICAL";
-  prefs.primaryAxisSizingMode = "AUTO";
-  prefs.counterAxisSizingMode = "FIXED";
-  prefs.resize(contentWidth, 100);
-  prefs.itemSpacing = 0;
-  prefs.fills = [];
+  for (const toggle of toggles) {
+    const row = await createToggleFromAnalysis(context, toggle.label, toggle.enabled);
+    row.x = padding;
+    row.y = y;
+    frame.appendChild(row);
+    y += 56;
+  }
 
-  prefs.appendChild(createPreferenceRow("Push notifications", "Receive push notifications", true));
-  prefs.appendChild(createPreferenceRow("Email notifications", "Receive email updates", true));
-  prefs.appendChild(createPreferenceRow("SMS notifications", "Receive text messages", false));
-  prefs.appendChild(createPreferenceRow("Marketing emails", "Receive promotional content", false));
-
-  prefs.x = padding;
-  prefs.y = y;
-  frame.appendChild(prefs);
+  const saveBtn = await createButtonFromAnalysis(context, "Save Preferences", "primary", contentWidth);
+  saveBtn.x = padding;
+  saveBtn.y = height - 66;
+  frame.appendChild(saveBtn);
 }
 
-async function designSecuritySettingsScreen(frame: FrameNode, contentWidth: number, padding: number, height: number) {
+async function designPrivacySettingsScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { padding, contentWidth, height } = context;
   let y = 20;
 
-  // Back and title
-  const backBtn = createText("← Settings", 14, "Medium", COLORS.primary);
-  backBtn.x = padding;
-  backBtn.y = y;
-  frame.appendChild(backBtn);
-  y += 36;
+  const header = createScreenHeader("Privacy & Security", "");
+  header.x = padding;
+  header.y = y;
+  frame.appendChild(header);
+  y += 60;
 
-  const title = createText("Security", 24, "Bold", COLORS.foreground);
-  title.x = padding;
-  title.y = y;
-  frame.appendChild(title);
-  y += 50;
+  const options = [
+    { label: "Two-Factor Authentication", enabled: true },
+    { label: "Profile Visibility", enabled: true },
+    { label: "Data Collection", enabled: false },
+  ];
 
-  // Password section
-  const passwordLabel = createText("Password", 12, "Medium", COLORS.mutedForeground);
-  passwordLabel.x = padding;
-  passwordLabel.y = y;
-  frame.appendChild(passwordLabel);
-  y += 24;
+  for (const opt of options) {
+    const row = await createToggleFromAnalysis(context, opt.label, opt.enabled);
+    row.x = padding;
+    row.y = y;
+    frame.appendChild(row);
+    y += 56;
+  }
 
-  const passwordRow = createSettingsRow("🔑", "Change password", "Last changed 3 months ago", contentWidth);
-  passwordRow.x = padding;
-  passwordRow.y = y;
-  frame.appendChild(passwordRow);
-  y += 80;
-
-  // 2FA section
-  const tfaLabel = createText("Two-factor authentication", 12, "Medium", COLORS.mutedForeground);
-  tfaLabel.x = padding;
-  tfaLabel.y = y;
-  frame.appendChild(tfaLabel);
-  y += 24;
-
-  const tfaRow = createSettingsRow("🔒", "Enable 2FA", "Add an extra layer of security", contentWidth);
-  tfaRow.x = padding;
-  tfaRow.y = y;
-  frame.appendChild(tfaRow);
-  y += 80;
-
-  // Sessions
-  const sessionsLabel = createText("Sessions", 12, "Medium", COLORS.mutedForeground);
-  sessionsLabel.x = padding;
-  sessionsLabel.y = y;
-  frame.appendChild(sessionsLabel);
-  y += 24;
-
-  const sessionsRow = createSettingsRow("📱", "Manage sessions", "View and manage active sessions", contentWidth);
-  sessionsRow.x = padding;
-  sessionsRow.y = y;
-  frame.appendChild(sessionsRow);
+  const saveBtn = await createButtonFromAnalysis(context, "Save Settings", "primary", contentWidth);
+  saveBtn.x = padding;
+  saveBtn.y = height - 66;
+  frame.appendChild(saveBtn);
 }
 
-async function designGenericSettingsScreen(frame: FrameNode, screenId: string, contentWidth: number, padding: number, height: number) {
+async function designChangePasswordScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { padding, contentWidth, height } = context;
   let y = 20;
 
-  const backBtn = createText("← Settings", 14, "Medium", COLORS.primary);
-  backBtn.x = padding;
-  backBtn.y = y;
-  frame.appendChild(backBtn);
-  y += 36;
-
-  const title = createText(formatScreenName(screenId), 24, "Bold", COLORS.foreground);
-  title.x = padding;
-  title.y = y;
-  frame.appendChild(title);
-  y += 50;
+  const header = createScreenHeader("Change Password", "");
+  header.x = padding;
+  header.y = y;
+  frame.appendChild(header);
+  y += 60;
 
   const form = createFormContainer(contentWidth);
   form.x = padding;
   form.y = y;
-  form.appendChild(createLabeledInput("Setting", "Value", contentWidth));
-  form.appendChild(createButton("Save", "primary", contentWidth));
+
+  form.appendChild(await createInputFromAnalysis(context, "Current Password", "Enter current password", contentWidth));
+  form.appendChild(await createInputFromAnalysis(context, "New Password", "Enter new password", contentWidth));
+  form.appendChild(await createInputFromAnalysis(context, "Confirm Password", "Confirm new password", contentWidth));
+
   frame.appendChild(form);
+
+  const updateBtn = await createButtonFromAnalysis(context, "Update Password", "primary", contentWidth);
+  updateBtn.x = padding;
+  updateBtn.y = height - 66;
+  frame.appendChild(updateBtn);
 }
 
-// ============================================================
-// UPLOAD SCREENS
-// ============================================================
+async function designDeleteAccountScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { padding, contentWidth, centerX, height } = context;
+  let y = 100;
 
-async function designUploadScreen(frame: FrameNode, screenId: string, width: number, height: number) {
-  const padding = 20;
-  const contentWidth = width - padding * 2;
-  const centerX = width / 2;
-
-  if (screenId === "upload" || screenId === "select") {
-    await designFileSelectScreen(frame, contentWidth, centerX, height);
-  } else if (screenId === "progress" || screenId === "uploading") {
-    await designUploadProgressScreen(frame, contentWidth, centerX, height);
-  } else if (screenId === "success" || screenId === "complete") {
-    await designUploadSuccessScreen(frame, contentWidth, centerX, height);
-  } else if (screenId === "error") {
-    await designUploadErrorScreen(frame, contentWidth, centerX, height);
-  } else {
-    await designGenericUploadScreen(frame, screenId, contentWidth, padding, height);
-  }
-}
-
-async function designFileSelectScreen(frame: FrameNode, contentWidth: number, centerX: number, height: number) {
-  let y = 80;
-
-  // Title
-  const title = createText("Upload Files", 24, "Semi Bold", COLORS.foreground);
-  title.x = centerX - title.width / 2;
-  title.y = y;
-  frame.appendChild(title);
-  y += 50;
-
-  // Drop zone
-  const dropZone = figma.createFrame();
-  dropZone.name = "drop-zone";
-  dropZone.resize(contentWidth, 200);
-  dropZone.cornerRadius = 12;
-  dropZone.fills = [{ type: "SOLID", color: COLORS.muted }];
-  dropZone.strokes = [{ type: "SOLID", color: COLORS.border, opacity: 1 }];
-  dropZone.strokeWeight = 2;
-  dropZone.dashPattern = [8, 4];
-  dropZone.layoutMode = "VERTICAL";
-  dropZone.primaryAxisAlignItems = "CENTER";
-  dropZone.counterAxisAlignItems = "CENTER";
-  dropZone.itemSpacing = 12;
-
-  const uploadIcon = createPlaceholderIcon(48, COLORS.mutedForeground, "square");
-  dropZone.appendChild(uploadIcon);
-
-  const dropText = createText("Drag and drop files here", 16, "Medium", COLORS.foreground);
-  dropZone.appendChild(dropText);
-
-  const orText = createText("or", 14, "Regular", COLORS.mutedForeground);
-  dropZone.appendChild(orText);
-
-  const browseBtn = createButton("Browse Files", "outline", 140);
-  dropZone.appendChild(browseBtn);
-
-  dropZone.x = centerX - contentWidth / 2;
-  dropZone.y = y;
-  frame.appendChild(dropZone);
-  y += 230;
-
-  // File types info
-  const fileTypes = createText("Supported: JPG, PNG, GIF, PDF (max 10MB)", 12, "Regular", COLORS.mutedForeground);
-  fileTypes.x = centerX - fileTypes.width / 2;
-  fileTypes.y = y;
-  frame.appendChild(fileTypes);
-}
-
-async function designUploadProgressScreen(frame: FrameNode, contentWidth: number, centerX: number, height: number) {
-  let y = 120;
-
-  // Uploading icon
-  const icon = createIconCircle("↑", COLORS.primary);
-  icon.x = centerX - 28;
-  icon.y = y;
-  frame.appendChild(icon);
-  y += 76;
-
-  // Title
-  const title = createText("Uploading...", 24, "Semi Bold", COLORS.foreground);
-  title.x = centerX - title.width / 2;
-  title.y = y;
-  frame.appendChild(title);
-  y += 50;
-
-  // Progress bar
-  const progressBg = figma.createFrame();
-  progressBg.name = "progress-bg";
-  progressBg.resize(contentWidth, 8);
-  progressBg.cornerRadius = 4;
-  progressBg.fills = [{ type: "SOLID", color: COLORS.muted }];
-  progressBg.x = centerX - contentWidth / 2;
-  progressBg.y = y;
-  frame.appendChild(progressBg);
-
-  const progressFill = figma.createFrame();
-  progressFill.name = "progress-fill";
-  progressFill.resize(contentWidth * 0.65, 8);
-  progressFill.cornerRadius = 4;
-  progressFill.fills = [{ type: "SOLID", color: COLORS.primary }];
-  progressFill.x = centerX - contentWidth / 2;
-  progressFill.y = y;
-  frame.appendChild(progressFill);
-  y += 24;
-
-  // Progress text
-  const progressText = createText("65% • 2.3 MB of 3.5 MB", 14, "Regular", COLORS.mutedForeground);
-  progressText.x = centerX - progressText.width / 2;
-  progressText.y = y;
-  frame.appendChild(progressText);
-  y += 50;
-
-  // Cancel button
-  const cancelBtn = createButton("Cancel", "outline", 120);
-  cancelBtn.x = centerX - 60;
-  cancelBtn.y = y;
-  frame.appendChild(cancelBtn);
-}
-
-async function designUploadSuccessScreen(frame: FrameNode, contentWidth: number, centerX: number, height: number) {
-  let y = 120;
-
-  // Success icon
-  const icon = createIconCircle("✓", COLORS.success);
-  icon.x = centerX - 28;
-  icon.y = y;
-  frame.appendChild(icon);
-  y += 76;
-
-  // Title
-  const title = createText("Upload Complete!", 24, "Semi Bold", COLORS.foreground);
-  title.x = centerX - title.width / 2;
-  title.y = y;
-  frame.appendChild(title);
-  y += 36;
-
-  // Description
-  const desc = createText("Your file has been uploaded successfully.", 14, "Regular", COLORS.mutedForeground);
-  desc.x = centerX - desc.width / 2;
-  desc.y = y;
-  frame.appendChild(desc);
-  y += 50;
-
-  // File preview card
-  const fileCard = figma.createFrame();
-  fileCard.name = "file-card";
-  fileCard.layoutMode = "HORIZONTAL";
-  fileCard.primaryAxisSizingMode = "FIXED";
-  fileCard.counterAxisSizingMode = "AUTO";
-  fileCard.resize(Math.min(contentWidth, 280), 60);
-  fileCard.paddingLeft = 16;
-  fileCard.paddingRight = 16;
-  fileCard.paddingTop = 12;
-  fileCard.paddingBottom = 12;
-  fileCard.itemSpacing = 12;
-  fileCard.counterAxisAlignItems = "CENTER";
-  fileCard.cornerRadius = 8;
-  fileCard.fills = [{ type: "SOLID", color: COLORS.muted }];
-
-  const fileIcon = createPlaceholderIcon(24, COLORS.foreground, "square");
-  fileCard.appendChild(fileIcon);
-
-  const fileName = createText("document.pdf", 14, "Medium", COLORS.foreground);
-  fileCard.appendChild(fileName);
-
-  fileCard.x = centerX - fileCard.width / 2;
-  fileCard.y = y;
-  frame.appendChild(fileCard);
-  y += 90;
-
-  // Buttons
-  const uploadMoreBtn = createButton("Upload More", "primary", Math.min(contentWidth, 280));
-  uploadMoreBtn.x = centerX - uploadMoreBtn.width / 2;
-  uploadMoreBtn.y = y;
-  frame.appendChild(uploadMoreBtn);
-  y += 52;
-
-  const doneBtn = createButton("Done", "outline", Math.min(contentWidth, 280));
-  doneBtn.x = centerX - doneBtn.width / 2;
-  doneBtn.y = y;
-  frame.appendChild(doneBtn);
-}
-
-async function designUploadErrorScreen(frame: FrameNode, contentWidth: number, centerX: number, height: number) {
-  let y = 120;
-
-  // Error icon
   const icon = createIconCircle("!", COLORS.destructive);
   icon.x = centerX - 28;
   icon.y = y;
   frame.appendChild(icon);
   y += 76;
 
-  // Title
+  const title = createText("Delete Account", 24, "Semi Bold", COLORS.foreground);
+  title.x = centerX - title.width / 2;
+  title.y = y;
+  frame.appendChild(title);
+  y += 36;
+
+  const desc = createText("This action is permanent. All your data\nwill be deleted and cannot be recovered.", 14, "Regular", COLORS.mutedForeground);
+  desc.textAlignHorizontal = "CENTER";
+  desc.x = centerX - desc.width / 2;
+  desc.y = y;
+  frame.appendChild(desc);
+  y += 60;
+
+  const input = await createInputFromAnalysis(context, "Type DELETE to confirm", "DELETE", contentWidth);
+  input.x = padding;
+  input.y = y;
+  frame.appendChild(input);
+
+  // Cancel button (secondary, top)
+  const cancelBtn = await createButtonFromAnalysis(context, "Cancel", "outline", contentWidth);
+  cancelBtn.x = padding;
+  cancelBtn.y = height - 122;
+  frame.appendChild(cancelBtn);
+
+  // Delete button (destructive, bottom)
+  const deleteBtn = await createButtonFromAnalysis(context, "Delete My Account", "destructive", contentWidth);
+  deleteBtn.x = padding;
+  deleteBtn.y = height - 66;
+  frame.appendChild(deleteBtn);
+}
+
+async function designGenericSettingsScreenEnhanced(frame: FrameNode, screenId: string, context: DesignContext) {
+  const { padding, contentWidth, height } = context;
+  let y = 20;
+
+  const header = createScreenHeader(formatScreenName(screenId), "");
+  header.x = padding;
+  header.y = y;
+  frame.appendChild(header);
+  y += 60;
+
+  const form = createFormContainer(contentWidth);
+  form.x = padding;
+  form.y = y;
+  form.appendChild(await createInputFromAnalysis(context, "Setting", "Value", contentWidth));
+  frame.appendChild(form);
+
+  const saveBtn = await createButtonFromAnalysis(context, "Save", "primary", contentWidth);
+  saveBtn.x = padding;
+  saveBtn.y = height - 66;
+  frame.appendChild(saveBtn);
+}
+
+// ============================================================
+// UPLOAD SCREENS - ENHANCED (with component library)
+// ============================================================
+
+async function designUploadScreenEnhanced(frame: FrameNode, screenId: string, context: DesignContext) {
+  const { padding, contentWidth, centerX, height } = context;
+
+  if (screenId === "select" || screenId === "file-select") {
+    await designFileSelectScreenEnhanced(frame, context);
+  } else if (screenId === "progress" || screenId === "uploading") {
+    await designUploadProgressScreenEnhanced(frame, context);
+  } else if (screenId === "success" || screenId === "complete") {
+    await designUploadSuccessScreenEnhanced(frame, context);
+  } else if (screenId === "error" || screenId === "failed") {
+    await designUploadErrorScreenEnhanced(frame, context);
+  } else {
+    await designFileSelectScreenEnhanced(frame, context);
+  }
+}
+
+async function designFileSelectScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { padding, contentWidth, centerX, height } = context;
+  let y = 100;
+
+  // Upload area
+  const uploadArea = figma.createFrame();
+  uploadArea.name = "upload-area";
+  uploadArea.resize(Math.min(contentWidth, 300), 200);
+  uploadArea.cornerRadius = 12;
+  uploadArea.fills = [{ type: "SOLID", color: COLORS.muted }];
+  uploadArea.strokes = [{ type: "SOLID", color: COLORS.border, opacity: 1 }];
+  uploadArea.strokeWeight = 2;
+  uploadArea.dashPattern = [8, 8];
+  uploadArea.layoutMode = "VERTICAL";
+  uploadArea.primaryAxisAlignItems = "CENTER";
+  uploadArea.counterAxisAlignItems = "CENTER";
+  uploadArea.itemSpacing = 16;
+
+  const uploadIcon = createPlaceholderIcon(48, COLORS.mutedForeground, "arrow-up");
+  uploadArea.appendChild(uploadIcon);
+
+  const uploadText = createText("Drag & drop files here", 14, "Medium", COLORS.foreground);
+  uploadArea.appendChild(uploadText);
+
+  const uploadHint = createText("or click to browse", 12, "Regular", COLORS.mutedForeground);
+  uploadArea.appendChild(uploadHint);
+
+  uploadArea.x = centerX - uploadArea.width / 2;
+  uploadArea.y = y;
+  frame.appendChild(uploadArea);
+  y += 240;
+
+  const supportedText = createText("Supported: JPG, PNG, PDF (max 10MB)", 12, "Regular", COLORS.mutedForeground);
+  supportedText.x = centerX - supportedText.width / 2;
+  supportedText.y = y;
+  frame.appendChild(supportedText);
+  y += 50;
+
+  const cancelBtn = await createButtonFromAnalysis(context, "Cancel", "outline", 120);
+  cancelBtn.x = centerX - 60;
+  cancelBtn.y = y;
+  frame.appendChild(cancelBtn);
+}
+
+async function designUploadProgressScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { contentWidth, centerX, height } = context;
+  let y = 150;
+
+  const fileName = createText("document.pdf", 16, "Medium", COLORS.foreground);
+  fileName.x = centerX - fileName.width / 2;
+  fileName.y = y;
+  frame.appendChild(fileName);
+  y += 32;
+
+  const progressBg = figma.createFrame();
+  progressBg.name = "progress-bg";
+  progressBg.resize(Math.min(contentWidth, 280), 8);
+  progressBg.cornerRadius = 4;
+  progressBg.fills = [{ type: "SOLID", color: COLORS.muted }];
+  progressBg.x = centerX - progressBg.width / 2;
+  progressBg.y = y;
+  frame.appendChild(progressBg);
+
+  const progressFill = figma.createFrame();
+  progressFill.name = "progress-fill";
+  progressFill.resize(Math.min(contentWidth, 280) * 0.65, 8);
+  progressFill.cornerRadius = 4;
+  progressFill.fills = [{ type: "SOLID", color: COLORS.primary }];
+  progressFill.x = centerX - progressBg.width / 2;
+  progressFill.y = y;
+  frame.appendChild(progressFill);
+  y += 24;
+
+  const progressText = createText("65% uploaded", 14, "Regular", COLORS.mutedForeground);
+  progressText.x = centerX - progressText.width / 2;
+  progressText.y = y;
+  frame.appendChild(progressText);
+  y += 50;
+
+  const cancelBtn = await createButtonFromAnalysis(context, "Cancel", "outline", Math.min(contentWidth, 280));
+  cancelBtn.x = centerX - cancelBtn.width / 2;
+  cancelBtn.y = y;
+  frame.appendChild(cancelBtn);
+}
+
+async function designUploadSuccessScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { contentWidth, centerX, height } = context;
+  let y = 120;
+
+  const icon = createIconCircle("✓", COLORS.success);
+  icon.x = centerX - 28;
+  icon.y = y;
+  frame.appendChild(icon);
+  y += 76;
+
+  const title = createText("Upload Complete", 24, "Semi Bold", COLORS.foreground);
+  title.x = centerX - title.width / 2;
+  title.y = y;
+  frame.appendChild(title);
+  y += 36;
+
+  const desc = createText("Your file has been uploaded successfully.", 14, "Regular", COLORS.mutedForeground);
+  desc.x = centerX - desc.width / 2;
+  desc.y = y;
+  frame.appendChild(desc);
+  y += 60;
+
+  const doneBtn = await createButtonFromAnalysis(context, "Done", "primary", Math.min(contentWidth, 280));
+  doneBtn.x = centerX - doneBtn.width / 2;
+  doneBtn.y = y;
+  frame.appendChild(doneBtn);
+  y += 56;
+
+  const uploadMoreBtn = await createButtonFromAnalysis(context, "Upload Another", "outline", Math.min(contentWidth, 280));
+  uploadMoreBtn.x = centerX - uploadMoreBtn.width / 2;
+  uploadMoreBtn.y = y;
+  frame.appendChild(uploadMoreBtn);
+}
+
+async function designUploadErrorScreenEnhanced(frame: FrameNode, context: DesignContext) {
+  const { contentWidth, centerX, height } = context;
+  let y = 120;
+
+  const icon = createIconCircle("!", COLORS.destructive);
+  icon.x = centerX - 28;
+  icon.y = y;
+  frame.appendChild(icon);
+  y += 76;
+
   const title = createText("Upload Failed", 24, "Semi Bold", COLORS.foreground);
   title.x = centerX - title.width / 2;
   title.y = y;
   frame.appendChild(title);
   y += 36;
 
-  // Description
   const desc = createText("Something went wrong. Please try again.", 14, "Regular", COLORS.mutedForeground);
   desc.x = centerX - desc.width / 2;
   desc.y = y;
   frame.appendChild(desc);
-  y += 50;
+  y += 60;
 
-  // Error card
-  const errorCard = createErrorCard(Math.min(contentWidth, 280), "File size exceeds the 10MB limit.");
-  errorCard.x = centerX - errorCard.width / 2;
-  errorCard.y = y;
-  frame.appendChild(errorCard);
-  y += 90;
-
-  // Retry button
-  const retryBtn = createButton("Try Again", "primary", Math.min(contentWidth, 280));
+  const retryBtn = await createButtonFromAnalysis(context, "Try Again", "primary", Math.min(contentWidth, 280));
   retryBtn.x = centerX - retryBtn.width / 2;
   retryBtn.y = y;
   frame.appendChild(retryBtn);
-  y += 52;
+  y += 56;
 
-  // Cancel button
-  const cancelBtn = createButton("Cancel", "outline", Math.min(contentWidth, 280));
+  const cancelBtn = await createButtonFromAnalysis(context, "Cancel", "outline", Math.min(contentWidth, 280));
   cancelBtn.x = centerX - cancelBtn.width / 2;
   cancelBtn.y = y;
   frame.appendChild(cancelBtn);
 }
 
-async function designGenericUploadScreen(frame: FrameNode, screenId: string, contentWidth: number, padding: number, height: number) {
-  await designFileSelectScreen(frame, contentWidth, frame.width / 2, height);
-}
-
-// ============================================================
-// GENERIC FALLBACK
-// ============================================================
-
-async function designGenericScreen(frame: FrameNode, finding: MissingScreenFinding, width: number, height: number) {
-  const padding = 24;
-  const contentWidth = Math.min(width - padding * 2, 320);
-  const centerX = width / 2;
-
-  let y = 80;
-
-  // Title
-  const title = createText(finding.missing_screen.name, 24, "Semi Bold", COLORS.foreground);
-  title.x = centerX - title.width / 2;
-  title.y = y;
-  frame.appendChild(title);
-  y += 40;
-
-  // Description
-  if (finding.missing_screen.description) {
-    const desc = createText(finding.missing_screen.description, 14, "Regular", COLORS.mutedForeground);
-    desc.resize(contentWidth, desc.height);
-    desc.textAutoResize = "HEIGHT";
-    desc.textAlignHorizontal = "CENTER";
-    desc.x = centerX - contentWidth / 2;
-    desc.y = y;
-    frame.appendChild(desc);
-    y += desc.height + 30;
-  }
-
-  // Render suggested components
-  if (finding.recommendation.components.length > 0) {
-    await renderComponentStack(finding.recommendation.components, frame, {
-      x: centerX - contentWidth / 2,
-      y: y,
-      maxWidth: contentWidth,
-    });
-  }
-}
 
 // ============================================================
 // HELPER FUNCTIONS

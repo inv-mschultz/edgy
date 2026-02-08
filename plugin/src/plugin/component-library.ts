@@ -43,6 +43,7 @@ export interface ComponentLibrary {
 
 /**
  * Discovers all available components in the file and team libraries.
+ * Stores all variants so we can find specific ones (primary, secondary, destructive, etc.)
  */
 export async function discoverComponents(): Promise<ComponentLibrary> {
   const library: ComponentLibrary = {
@@ -59,24 +60,17 @@ export async function discoverComponents(): Promise<ComponentLibrary> {
   // Load all pages first (required for findAllWithCriteria with dynamic page access)
   await figma.loadAllPagesAsync();
 
-  // Get local components
-  const localComponents = figma.root.findAllWithCriteria({
-    types: ["COMPONENT"],
-  }) as ComponentNode[];
+  // Track processed component sets to log them properly
+  const processedSets = new Set<string>();
 
-  for (const comp of localComponents) {
-    const discovered = await processComponent(comp, false);
-    if (discovered) {
-      addToLibrary(library, discovered);
-    }
-  }
-
-  // Get component sets (for variants)
+  // Get component sets - these contain the variants we need
   const componentSets = figma.root.findAllWithCriteria({
     types: ["COMPONENT_SET"],
   }) as ComponentSetNode[];
 
   for (const set of componentSets) {
+    processedSets.add(set.name);
+    // Process ALL variants in the set so we can find specific ones later
     for (const child of set.children) {
       if (child.type === "COMPONENT") {
         const discovered = await processComponent(child, false, set.name);
@@ -84,6 +78,22 @@ export async function discoverComponents(): Promise<ComponentLibrary> {
           addToLibrary(library, discovered);
         }
       }
+    }
+  }
+
+  // Get standalone local components (NOT inside component sets)
+  const localComponents = figma.root.findAllWithCriteria({
+    types: ["COMPONENT"],
+  }) as ComponentNode[];
+
+  for (const comp of localComponents) {
+    // Skip if this component is inside a component set (already processed above)
+    if (comp.parent?.type === "COMPONENT_SET") {
+      continue;
+    }
+    const discovered = await processComponent(comp, false);
+    if (discovered) {
+      addToLibrary(library, discovered);
     }
   }
 
@@ -109,12 +119,15 @@ export async function discoverComponents(): Promise<ComponentLibrary> {
     }
   }
 
-  console.log(`[edgy] Discovered ${library.components.size} components`);
-  console.log(`[edgy] - Buttons: ${library.buttons.length}`);
-  console.log(`[edgy] - Inputs: ${library.inputs.length}`);
-  console.log(`[edgy] - Cards: ${library.cards.length}`);
-  console.log(`[edgy] - Toggles: ${library.toggles.length}`);
-  console.log(`[edgy] - Checkboxes: ${library.checkboxes.length}`);
+  // Log component SET counts (not variant counts)
+  const buttonSets = new Set(library.buttons.map(b => b.componentSetName || b.name)).size;
+  const inputSets = new Set(library.inputs.map(i => i.componentSetName || i.name)).size;
+  const toggleSets = new Set(library.toggles.map(t => t.componentSetName || t.name)).size;
+
+  console.log(`[edgy] Discovered ${processedSets.size} component sets, ${library.components.size} total variants`);
+  console.log(`[edgy] - Button sets: ${buttonSets} (${library.buttons.length} variants)`);
+  console.log(`[edgy] - Input sets: ${inputSets} (${library.inputs.length} variants)`);
+  console.log(`[edgy] - Toggle/Switch sets: ${toggleSets} (${library.toggles.length} variants)`);
 
   return library;
 }
@@ -166,17 +179,21 @@ function addToLibrary(library: ComponentLibrary, comp: DiscoveredComponent): voi
   }
   library.byType.get(typeName)!.push(comp);
 
-  // Categorize by common patterns
+  // Categorize by common patterns - check component SET name for type classification
   if (nameLower.includes("button") || nameLower.includes("btn") || nameLower.includes("cta")) {
     library.buttons.push(comp);
   }
-  if (nameLower.includes("input") || nameLower.includes("textfield") || nameLower.includes("text field") || nameLower.includes("text-field")) {
+  // Input detection - exclude OTP-specific inputs from general input list
+  if (
+    (nameLower.includes("input") || nameLower.includes("textfield") || nameLower.includes("text field") || nameLower.includes("text-field")) &&
+    !nameLower.includes("otp")
+  ) {
     library.inputs.push(comp);
   }
   if (nameLower.includes("card") || nameLower.includes("container") || nameLower.includes("panel")) {
     library.cards.push(comp);
   }
-  // Separate toggles/switches from checkboxes
+  // Toggles and switches are for boolean on/off - prefer over checkboxes for settings
   if (nameLower.includes("toggle") || nameLower.includes("switch")) {
     library.toggles.push(comp);
   } else if (nameLower.includes("checkbox") || nameLower.includes("check box") || nameLower.includes("check-box")) {
@@ -206,6 +223,18 @@ export async function createComponentInstance(
   }
   return null;
 }
+
+/**
+ * Variant aliases - different names for similar button styles
+ */
+const VARIANT_ALIASES: Record<string, string[]> = {
+  link: ["link", "ghost", "text", "tertiary"],
+  ghost: ["ghost", "link", "text", "tertiary"],
+  secondary: ["secondary", "outline", "bordered"],
+  outline: ["outline", "secondary", "bordered"],
+  destructive: ["destructive", "danger", "error", "delete"],
+  primary: ["primary", "default", "filled", "solid"],
+};
 
 /**
  * Finds the best matching component for a given type and variant.
@@ -245,18 +274,26 @@ export function findBestComponent(
   // If variant specified, try to find matching variant
   if (variant) {
     const variantLower = variant.toLowerCase();
-    const match = candidates.find((c) => {
-      // Check variant properties
-      if (c.variantProperties) {
-        const values = Object.values(c.variantProperties).map((v) => v.toLowerCase());
-        if (values.some((v) => v.includes(variantLower) || variantLower.includes(v))) {
-          return true;
+    // Get aliases for this variant
+    const aliasesToCheck = VARIANT_ALIASES[variantLower] || [variantLower];
+
+    for (const alias of aliasesToCheck) {
+      const match = candidates.find((c) => {
+        // Check variant properties
+        if (c.variantProperties) {
+          const values = Object.values(c.variantProperties).map((v) => v.toLowerCase());
+          if (values.some((v) => v.includes(alias) || alias.includes(v))) {
+            return true;
+          }
         }
+        // Check component name (variant name like "Style=Ghost")
+        return c.name.toLowerCase().includes(alias);
+      });
+      if (match) {
+        console.log(`[edgy] Found ${type} variant "${variant}" as "${match.name}"`);
+        return match;
       }
-      // Check name
-      return c.name.toLowerCase().includes(variantLower);
-    });
-    if (match) return match;
+    }
   }
 
   // Return first candidate (usually the default)
@@ -280,22 +317,36 @@ export function serializeLibraryForLLM(library: ComponentLibrary): string {
 
   if (library.buttons.length > 0) {
     sections.push("### Buttons");
+    sections.push("Use these for ALL button elements. Pick the appropriate variant:");
     const buttonSets = groupByComponentSet(library.buttons);
     for (const [setName, variants] of buttonSets) {
       if (variants.length === 1) {
         sections.push(`- ${setName}`);
       } else {
-        const variantNames = variants
-          .map((v) => {
-            if (v.variantProperties) {
-              return Object.entries(v.variantProperties)
-                .map(([k, val]) => `${k}=${val}`)
-                .join(", ");
+        // List each variant on its own line for clarity
+        sections.push(`- ${setName}:`);
+        for (const v of variants) {
+          if (v.variantProperties) {
+            const variantStr = Object.entries(v.variantProperties)
+              .map(([k, val]) => `${k}=${val}`)
+              .join(", ");
+            // Add usage hints based on variant name
+            const valuesLower = Object.values(v.variantProperties).map(val => val.toLowerCase()).join(" ");
+            let hint = "";
+            if (valuesLower.includes("primary") || valuesLower.includes("filled") || valuesLower.includes("solid")) {
+              hint = " (use for main/primary actions)";
+            } else if (valuesLower.includes("secondary") || valuesLower.includes("outline") || valuesLower.includes("bordered")) {
+              hint = " (use for secondary/cancel actions)";
+            } else if (valuesLower.includes("ghost") || valuesLower.includes("text") || valuesLower.includes("link")) {
+              hint = " (use for tertiary/skip actions)";
+            } else if (valuesLower.includes("destructive") || valuesLower.includes("danger") || valuesLower.includes("delete")) {
+              hint = " (use for delete/destructive actions)";
             }
-            return v.name;
-          })
-          .join(" | ");
-        sections.push(`- ${setName}: ${variantNames}`);
+            sections.push(`    - ${variantStr}${hint}`);
+          } else {
+            sections.push(`    - ${v.name}`);
+          }
+        }
       }
     }
   }
@@ -320,8 +371,18 @@ export function serializeLibraryForLLM(library: ComponentLibrary): string {
     }
   }
 
+  if (library.toggles.length > 0) {
+    sections.push("\n### Toggles/Switches");
+    sections.push("Use these for boolean on/off settings:");
+    const toggleSets = groupByComponentSet(library.toggles);
+    for (const [setName] of toggleSets) {
+      sections.push(`- ${setName}`);
+    }
+  }
+
   if (library.checkboxes.length > 0) {
-    sections.push("\n### Checkboxes/Toggles");
+    sections.push("\n### Checkboxes");
+    sections.push("Use these for multi-select options or consent:");
     const checkboxSets = groupByComponentSet(library.checkboxes);
     for (const [setName] of checkboxSets) {
       sections.push(`- ${setName}`);

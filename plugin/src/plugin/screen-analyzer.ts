@@ -142,8 +142,8 @@ export async function analyzeScreens(frames: FrameNode[]): Promise<ScreenAnalysi
   let headerCount = 0;
 
   for (const frame of frames) {
-    // Analyze layout patterns
-    analyzeLayoutPatterns(frame, paddingCounts, gapCounts, widthCounts, heightCounts);
+    // Analyze layout patterns - pass true for isScreenLevel since these are top-level screens
+    analyzeLayoutPatterns(frame, paddingCounts, gapCounts, widthCounts, heightCounts, true);
 
     // Check alignment
     const alignment = detectAlignment(frame);
@@ -171,6 +171,14 @@ export async function analyzeScreens(frames: FrameNode[]): Promise<ScreenAnalysi
   analysis.patterns.gaps = sortByFrequency(gapCounts).slice(0, 5);
   analysis.patterns.contentWidths = sortByFrequency(widthCounts).slice(0, 5);
   analysis.patterns.elementHeights = sortByFrequency(heightCounts).slice(0, 5);
+
+  // Fallback to sensible defaults if no patterns detected
+  if (analysis.patterns.paddings.length === 0) {
+    analysis.patterns.paddings = [24]; // Standard mobile padding
+  }
+  if (analysis.patterns.gaps.length === 0) {
+    analysis.patterns.gaps = [16]; // Standard spacing
+  }
 
   // Determine dominant alignment
   if (centeredCount > leftCount * 1.5) {
@@ -396,32 +404,64 @@ function classifyComponentRole(
 
 // --- Layout Pattern Analysis ---
 
+/**
+ * Analyzes a SCREEN frame to detect content padding.
+ * Looks at where content is positioned relative to screen edges.
+ */
+function analyzeScreenPadding(frame: FrameNode): number[] {
+  if (!frame.children || frame.children.length === 0) return [];
+
+  const screenWidth = frame.width;
+  const paddings: number[] = [];
+
+  // Find content elements (skip very small or full-width elements)
+  const contentChildren = frame.children.filter((child) => {
+    if (!("x" in child) || !("width" in child)) return false;
+    // Skip elements that are too small (icons, decorations)
+    if (child.width < 50) return false;
+    // Skip elements that span the full width (backgrounds)
+    if (child.width >= screenWidth - 10) return false;
+    return true;
+  });
+
+  if (contentChildren.length === 0) return [];
+
+  // Detect left padding from content position
+  for (const child of contentChildren) {
+    if ("x" in child) {
+      const leftPadding = Math.round(child.x);
+      // Only count reasonable padding values (8-60px typical for mobile)
+      if (leftPadding >= 8 && leftPadding <= 60) {
+        paddings.push(leftPadding);
+      }
+    }
+  }
+
+  return paddings;
+}
+
 function analyzeLayoutPatterns(
   node: SceneNode,
   paddingCounts: Map<number, number>,
   gapCounts: Map<number, number>,
   widthCounts: Map<number, number>,
-  heightCounts: Map<number, number>
+  heightCounts: Map<number, number>,
+  isScreenLevel: boolean = false
 ): void {
   if (!("children" in node) || !node.children) return;
 
-  // Check for auto-layout
-  if ("layoutMode" in node && node.layoutMode !== "NONE") {
-    const frame = node as FrameNode;
+  const frame = node as FrameNode;
 
-    // Extract padding
-    const paddings = [
-      frame.paddingTop,
-      frame.paddingRight,
-      frame.paddingBottom,
-      frame.paddingLeft,
-    ].filter((p): p is number => typeof p === "number" && p > 0 && p <= 48);
-
-    for (const p of paddings) {
-      const rounded = Math.round(p);
-      paddingCounts.set(rounded, (paddingCounts.get(rounded) || 0) + 1);
+  // For screen-level frames, detect content padding from child positions
+  if (isScreenLevel) {
+    const screenPaddings = analyzeScreenPadding(frame);
+    for (const p of screenPaddings) {
+      paddingCounts.set(p, (paddingCounts.get(p) || 0) + 1);
     }
+  }
 
+  // Check for auto-layout gaps (useful for detecting spacing patterns)
+  if ("layoutMode" in node && node.layoutMode !== "NONE") {
     // Extract gap
     if (typeof frame.itemSpacing === "number" && frame.itemSpacing > 0 && frame.itemSpacing <= 48) {
       const gap = Math.round(frame.itemSpacing);
@@ -444,14 +484,15 @@ function analyzeLayoutPatterns(
         heightCounts.set(h, (heightCounts.get(h) || 0) + 1);
       }
 
-      // Recurse
+      // Recurse into children (but not as screen-level)
       if ("children" in child) {
         analyzeLayoutPatterns(
           child as SceneNode,
           paddingCounts,
           gapCounts,
           widthCounts,
-          heightCounts
+          heightCounts,
+          false // nested frames are not screen-level
         );
       }
     }
