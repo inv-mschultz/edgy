@@ -1,0 +1,5 @@
+# Enriched Knowledge Base
+
+This directory contains scraped content from trusted sources referenced in `edgy-ai-training-reference.md`.
+
+Run `npx tsx scripts/scrape-training-sources.ts` to populate this directory.

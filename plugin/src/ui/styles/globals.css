@@ -162,3 +162,26 @@
 .animate-fade-in {
   animation: fade-in 0.4s ease-out forwards;
 }
+
+/* Progress bar loading animation */
+@keyframes progress-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.animate-progress-loading {
+  background: linear-gradient(
+    90deg,
+    #4A1A6B 0%,
+    #6B2D8A 25%,
+    #8B45AA 50%,
+    #6B2D8A 75%,
+    #4A1A6B 100%
+  );
+  background-size: 200% 100%;
+  animation: progress-loading 2s ease-in-out infinite;
+}

@@ -52,13 +52,24 @@ let fontsLoaded = false;
 async function ensureFontsLoaded(): Promise<void> {
   if (fontsLoaded) return;
   await Promise.all([
-    figma.loadFontAsync({ family: "Inter", style: "Bold" }),
-    figma.loadFontAsync({ family: "Inter", style: "Semi Bold" }),
-    figma.loadFontAsync({ family: "Inter", style: "Medium" }),
-    figma.loadFontAsync({ family: "Inter", style: "Regular" }),
+    figma.loadFontAsync({ family: "IBM Plex Sans Condensed", style: "Bold" }),
+    figma.loadFontAsync({ family: "IBM Plex Sans Condensed", style: "SemiBold" }),
+    figma.loadFontAsync({ family: "IBM Plex Sans Condensed", style: "Medium" }),
+    figma.loadFontAsync({ family: "IBM Plex Sans Condensed", style: "Regular" }),
+    // Keep Inter as fallback in case IBM Plex Sans Condensed is not available
+    figma.loadFontAsync({ family: "Inter", style: "Bold" }).catch(() => {}),
+    figma.loadFontAsync({ family: "Inter", style: "Semi Bold" }).catch(() => {}),
+    figma.loadFontAsync({ family: "Inter", style: "Medium" }).catch(() => {}),
+    figma.loadFontAsync({ family: "Inter", style: "Regular" }).catch(() => {}),
   ]);
   fontsLoaded = true;
 }
+
+const FONT_FAMILY = "IBM Plex Sans Condensed";
+const FONT_BOLD: FontName = { family: FONT_FAMILY, style: "Bold" };
+const FONT_SEMIBOLD: FontName = { family: FONT_FAMILY, style: "SemiBold" };
+const FONT_MEDIUM: FontName = { family: FONT_FAMILY, style: "Medium" };
+const FONT_REGULAR: FontName = { family: FONT_FAMILY, style: "Regular" };
 
 // --- Public API ---
 
@@ -125,7 +136,7 @@ export async function renderHealthIndicator(
   const labelText = formatBadgeText(data.summary);
   const text = figma.createText();
   text.name = "label";
-  text.fontName = { family: "Inter", style: "Medium" };
+  text.fontName = FONT_MEDIUM;
   text.fontSize = 11;
   text.characters = labelText;
   text.fills = [{ type: "SOLID", color: COLORS.foreground }];
@@ -204,17 +215,17 @@ export async function generateFindingsReport(
   header.itemSpacing = 4;
   header.fills = [];
 
-  const title = figma.createText();
-  title.fontName = { family: "Inter", style: "Bold" };
-  title.fontSize = 14;
-  title.characters = "EDGY";
-  title.fills = [{ type: "SOLID", color: COLORS.primary }];
-  header.appendChild(title);
+  // Render EDGY SVG logo
+  const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="140" height="64" fill="none" viewBox="0 0 140 64"><path fill="#370455" d="M116.444 63.11V35.467l-9.555-33.244V.889h14.096l1.892 23.11h1.23L125.999.89H140v1.333l-9.46 33.244v27.645h-14.096ZM81.721 64c-3.027 0-5.613-.681-7.757-2.044-2.081-1.423-3.658-3.29-4.73-5.6-1.072-2.37-1.608-5.008-1.608-7.912V15.556c0-2.134.567-4.149 1.702-6.045s2.618-3.555 4.447-4.978a22.185 22.185 0 0 1 6.243-3.289C82.288.414 84.56 0 86.83 0c3.09 0 6.086.711 8.987 2.133 2.901 1.363 5.298 3.23 7.19 5.6 1.955 2.311 2.932 4.919 2.932 7.823v6.31h-14V16.89c0-1.363-.568-2.43-1.704-3.2-1.072-.83-2.207-1.245-3.405-1.245-1.199 0-2.365.415-3.5 1.245-1.073.77-1.609 1.837-1.609 3.2v29.778c0 1.303.6 2.459 1.798 3.466 1.198 1.008 2.49 1.511 3.878 1.511 1.45 0 2.775-.503 3.974-1.51 1.198-1.008 1.797-2.164 1.797-3.467v-5.69h-6.433V28.534h19.204v34.578H93.168V60h-1.419c-.315.77-1.072 1.452-2.27 2.044-1.136.593-2.429 1.067-3.88 1.423-1.387.355-2.68.533-3.878.533Zm-51.419-.89V.89h16.556c3.09 0 5.865.71 8.325 2.133 2.522 1.363 4.509 3.23 5.96 5.6 1.513 2.311 2.27 4.918 2.27 7.822v31.111c0 2.904-.757 5.541-2.27 7.912-1.451 2.31-3.438 4.177-5.96 5.6-2.46 1.362-5.235 2.044-8.325 2.044H30.302Zm14.096-11.466h2.649c.63 0 1.135-.207 1.513-.622.442-.415.663-.889.663-1.422V14.489c0-.534-.221-1.008-.663-1.423-.378-.414-.883-.622-1.513-.622h-2.649v39.2ZM0 63.11V.89h26.489v11.555H14.096v12.89h8.23v13.332h-8.23v12.978h12.393v11.467H0Z"/></svg>`;
+  const logoNode = figma.createNodeFromSvg(logoSvg);
+  logoNode.name = "edgy-logo";
+  logoNode.resize(70, 32);
+  header.appendChild(logoNode);
 
   const subtitle = figma.createText();
-  subtitle.fontName = { family: "Inter", style: "Regular" };
+  subtitle.fontName = FONT_REGULAR;
   subtitle.fontSize = 11;
-  subtitle.characters = `${results.summary.total_findings} edge case${results.summary.total_findings !== 1 ? "s" : ""} found`;
+  subtitle.characters = `${results.summary.total_findings} finding${results.summary.total_findings !== 1 ? "s" : ""} found`;
   subtitle.fills = [{ type: "SOLID", color: COLORS.mutedForeground }];
   header.appendChild(subtitle);
 
@@ -261,7 +272,7 @@ export async function generateFindingsReport(
 
     // Flow header
     const flowHeader = figma.createText();
-    flowHeader.fontName = { family: "Inter", style: "Semi Bold" };
+    flowHeader.fontName = FONT_SEMIBOLD;
     flowHeader.fontSize = 11;
     flowHeader.characters = formatFlowName(flowType).toUpperCase();
     flowHeader.fills = [{ type: "SOLID", color: COLORS.primary }];
@@ -273,7 +284,7 @@ export async function generateFindingsReport(
 
       // Screen title
       const screenTitle = figma.createText();
-      screenTitle.fontName = { family: "Inter", style: "Semi Bold" };
+      screenTitle.fontName = FONT_SEMIBOLD;
       screenTitle.fontSize = 14;
       screenTitle.lineHeight = { value: 20, unit: "PIXELS" };
       screenTitle.characters = screenResult.name;
@@ -300,7 +311,7 @@ export async function generateFindingsReport(
     // Missing screens for this flow
     if (flowGroup.missingScreens.length > 0) {
       const missingLabel = figma.createText();
-      missingLabel.fontName = { family: "Inter", style: "Medium" };
+      missingLabel.fontName = FONT_MEDIUM;
       missingLabel.fontSize = 11;
       missingLabel.characters = "Missing Screens";
       missingLabel.fills = [{ type: "SOLID", color: COLORS.mutedForeground }];
@@ -479,14 +490,14 @@ function createStatBadge(
   badge.fills = [{ type: "SOLID", color: bgColor }];
 
   const countText = figma.createText();
-  countText.fontName = { family: "Inter", style: "Semi Bold" };
+  countText.fontName = FONT_SEMIBOLD;
   countText.fontSize = 11;
   countText.characters = String(count);
   countText.fills = [{ type: "SOLID", color: textColor }];
   badge.appendChild(countText);
 
   const labelText = figma.createText();
-  labelText.fontName = { family: "Inter", style: "Medium" };
+  labelText.fontName = FONT_MEDIUM;
   labelText.fontSize = 11;
   labelText.characters = label;
   labelText.fills = [{ type: "SOLID", color: textColor }];
@@ -533,7 +544,7 @@ function createFindingItem(finding: AnalysisFinding | { severity: string; title:
 
   // Icon symbol
   const iconSymbol = figma.createText();
-  iconSymbol.fontName = { family: "Inter", style: "Bold" };
+  iconSymbol.fontName = FONT_BOLD;
   iconSymbol.fontSize = 16;
   if (finding.severity === "critical") {
     iconSymbol.characters = "×";
@@ -562,7 +573,7 @@ function createFindingItem(finding: AnalysisFinding | { severity: string; title:
   // Title text
   const titleText = figma.createText();
   titleText.name = "title";
-  titleText.fontName = { family: "Inter", style: "Semi Bold" };
+  titleText.fontName = FONT_SEMIBOLD;
   titleText.fontSize = 13;
   titleText.lineHeight = { value: 18, unit: "PIXELS" };
   titleText.characters = finding.title;
@@ -580,7 +591,7 @@ function createFindingItem(finding: AnalysisFinding | { severity: string; title:
   if (description) {
     const descText = figma.createText();
     descText.name = "description";
-    descText.fontName = { family: "Inter", style: "Regular" };
+    descText.fontName = FONT_REGULAR;
     descText.fontSize = 12;
     descText.lineHeight = { value: 18, unit: "PIXELS" };
     descText.characters = description;

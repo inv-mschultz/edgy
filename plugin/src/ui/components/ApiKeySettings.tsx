@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { getApiKey, setApiKey, clearApiKey, getProvider, setProvider, getAIScreenGeneration, setAIScreenGeneration, getVercelToken, setVercelToken, clearVercelToken } from "../lib/api-key-store";
+import { getApiKey, setApiKey, clearApiKey, getProvider, setProvider, getAIScreenGeneration, setAIScreenGeneration, getVercelToken, setVercelToken, clearVercelToken, getEdgyApiKey, setEdgyApiKey as storeEdgyApiKey, clearEdgyApiKey } from "../lib/api-key-store";
 import type { AIProvider } from "../lib/types";
-import { Key, Trash2, Check, AlertCircle, Eraser, Sparkles, Globe } from "lucide-react";
+import { Key, Trash2, Check, AlertCircle, Eraser, Sparkles, Globe, Server } from "lucide-react";
 
 const PROVIDERS: { value: AIProvider; label: string; placeholder: string }[] = [
   { value: "claude", label: "Claude", placeholder: "sk-ant-..." },
@@ -25,12 +25,19 @@ export function ApiKeySettings() {
   const [vercelSaving, setVercelSaving] = useState(false);
   const [vercelStatus, setVercelStatus] = useState<"idle" | "saved" | "error">("idle");
 
+  // Edgy Server state
+  const [edgyApiKey, setEdgyApiKeyState] = useState("");
+  const [savedEdgyApiKey, setSavedEdgyApiKey] = useState<string | null>(null);
+  const [edgySaving, setEdgySaving] = useState(false);
+  const [edgyStatus, setEdgyStatus] = useState<"idle" | "saved" | "error">("idle");
+
   useEffect(() => {
-    Promise.all([getApiKey(), getProvider(), getAIScreenGeneration(), getVercelToken()]).then(([k, p, aiGen, vToken]) => {
+    Promise.all([getApiKey(), getProvider(), getAIScreenGeneration(), getVercelToken(), getEdgyApiKey()]).then(([k, p, aiGen, vToken, edgyKey]) => {
       setSavedKey(k);
       setProviderState(p);
       setAiScreenGen(aiGen);
       setSavedVercelToken(vToken);
+      setSavedEdgyApiKey(edgyKey);
       setLoading(false);
     });
 
@@ -123,6 +130,37 @@ export function ApiKeySettings() {
       setVercelStatus("error");
     } finally {
       setVercelSaving(false);
+    }
+  }
+
+  async function handleEdgySave() {
+    const trimmed = edgyApiKey.trim();
+    if (!trimmed) return;
+
+    setEdgySaving(true);
+    try {
+      await storeEdgyApiKey(trimmed);
+      setSavedEdgyApiKey(trimmed);
+      setEdgyApiKeyState("");
+      setEdgyStatus("saved");
+      setTimeout(() => setEdgyStatus("idle"), 2000);
+    } catch {
+      setEdgyStatus("error");
+    } finally {
+      setEdgySaving(false);
+    }
+  }
+
+  async function handleEdgyRemove() {
+    setEdgySaving(true);
+    try {
+      await clearEdgyApiKey();
+      setSavedEdgyApiKey(null);
+      setEdgyStatus("idle");
+    } catch {
+      setEdgyStatus("error");
+    } finally {
+      setEdgySaving(false);
     }
   }
 
@@ -332,6 +370,65 @@ export function ApiKeySettings() {
           <div className="flex items-center gap-1 text-xs text-destructive">
             <AlertCircle className="w-3 h-3" />
             Failed to save token. Please try again.
+          </div>
+        )}
+      </div>
+
+      {/* Edgy Server */}
+      <div className="rounded-lg border p-4 flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <Server className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium">Edgy API Key</span>
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          Required for running analysis. Your designs are analysed on the Edgy server.
+        </p>
+
+        {savedEdgyApiKey ? (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-xs bg-secondary px-2 py-1 rounded overflow-hidden text-ellipsis">
+                {maskKey(savedEdgyApiKey)}
+              </code>
+              <button
+                onClick={handleEdgyRemove}
+                disabled={edgySaving}
+                className="flex-shrink-0 flex items-center gap-1 px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50 transition-colors"
+                style={{ borderRadius: 4 }}
+              >
+                <Trash2 className="w-3 h-3" />
+                Remove
+              </button>
+            </div>
+            <div className="flex items-center gap-1 text-xs text-green-600">
+              <Check className="w-3 h-3" />
+              Server connected
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <input
+              type="password"
+              value={edgyApiKey}
+              onChange={(e) => setEdgyApiKeyState(e.target.value)}
+              placeholder="edgy_..."
+              className="w-full px-3 py-2 text-sm rounded-lg border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50"
+              onKeyDown={(e) => e.key === "Enter" && handleEdgySave()}
+            />
+            <p className="text-xs text-muted-foreground">
+              Enter your Edgy API key to run analysis
+            </p>
+          </div>
+        )}
+
+        {edgyStatus === "saved" && (
+          <p className="text-xs text-green-600">API key saved successfully.</p>
+        )}
+        {edgyStatus === "error" && (
+          <div className="flex items-center gap-1 text-xs text-destructive">
+            <AlertCircle className="w-3 h-3" />
+            Failed to save API key. Please try again.
           </div>
         )}
       </div>

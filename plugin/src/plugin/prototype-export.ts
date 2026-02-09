@@ -1,11 +1,13 @@
 /**
  * Prototype Export
  *
- * Generates a local HTML prototype from existing and generated screens.
- * Creates a complete, runnable prototype bundle with navigation.
+ * Generates prototypes from existing and generated screens.
+ * Supports two export modes:
+ * 1. HTML (legacy): Static HTML with absolute positioning
+ * 2. Next.js + shadcn (new): React components using shadcn/ui
  */
 
-import type { ExtractedScreen, MissingScreenFinding } from "../ui/lib/types";
+import type { ExtractedScreen, MissingScreenFinding, PrototypeFile, GeneratedScreenLayout } from "../ui/lib/types";
 import type { DesignTokens, SemanticColorTokens } from "./screen-designer";
 import {
   generateScreenPage,
@@ -17,8 +19,10 @@ import {
   slugify,
   escapeHtml,
   rgbToCss,
-  type GeneratedScreenLayout,
 } from "./html-renderer";
+import { classifyNodeTree, type ClassifiedElement } from "./element-classifier";
+import { generateScreenComponent, generateAllScreens, generateScreensFromLayouts, type GeneratedScreen } from "./shadcn-code-generator";
+import { generateNextJsBundle, type BundleOptions } from "./nextjs-bundler";
 
 // --- Types ---
 
@@ -730,11 +734,6 @@ ${bundle.navigation.map((n) => `- ${n.fromScreen} → ${n.toScreen} (${n.trigger
 
 // --- File Bundle Generation ---
 
-export interface PrototypeFile {
-  path: string;
-  content: string;
-}
-
 /**
  * Generates all files needed for the prototype bundle.
  */
@@ -777,6 +776,114 @@ export function generateAllPrototypeFiles(
   });
 
   return files;
+}
+
+// --- shadcn/Next.js Export ---
+
+export type ExportMode = "html" | "nextjs";
+
+export interface ShadcnExportOptions {
+  projectName: string;
+  includeNavigation?: boolean;
+}
+
+/**
+ * Generates a Next.js + shadcn prototype from extracted screens.
+ * This is the new, higher-quality export path.
+ */
+export function generateShadcnPrototype(
+  existingScreens: ExtractedScreen[],
+  generatedLayouts: Record<string, GeneratedScreenLayout>,
+  missingFindings: MissingScreenFinding[],
+  tokens?: DesignTokens,
+  options: ShadcnExportOptions = { projectName: "prototype" }
+): PrototypeFile[] {
+  // Classify each screen's node tree
+  const classifiedScreens: Array<{ name: string; classifiedTree: ClassifiedElement }> = [];
+
+  for (const screen of existingScreens) {
+    const classifiedTree = classifyNodeTree(screen.node_tree);
+    classifiedScreens.push({
+      name: screen.name,
+      classifiedTree,
+    });
+  }
+
+  // Helper to extract RGB from color (strip alpha if present)
+  const toRGB = (color: { r: number; g: number; b: number }) => ({
+    r: color.r,
+    g: color.g,
+    b: color.b,
+  });
+
+  // Generate React components for each screen
+  const shadcnTokens = tokens ? {
+    primaryColor: toRGB(tokens.semanticColors?.primary || tokens.primaryColor),
+    backgroundColor: toRGB(tokens.semanticColors?.background || tokens.backgroundColor),
+    foregroundColor: toRGB(tokens.semanticColors?.foreground || tokens.textColor),
+    mutedColor: toRGB(tokens.semanticColors?.muted || tokens.mutedColor),
+    borderColor: toRGB(tokens.semanticColors?.border || tokens.borderColor),
+    borderRadius: tokens.borderRadius / 16, // Convert px to rem
+  } : undefined;
+
+  // Generate components from existing Figma screens
+  const existingGenerated = generateAllScreens(classifiedScreens, shadcnTokens);
+
+  // Generate components from AI-generated layouts
+  const layoutsToProcess: Array<{ name: string; layout: GeneratedScreenLayout }> = [];
+  const findings = missingFindings || [];
+  const layouts = generatedLayouts || {};
+  for (const finding of findings) {
+    const layout = layouts[finding.id];
+    if (layout) {
+      layoutsToProcess.push({
+        name: finding.missing_screen.name,
+        layout,
+      });
+    }
+  }
+  const generatedFromLayouts = generateScreensFromLayouts(layoutsToProcess, shadcnTokens);
+
+  // Combine all screens
+  const allScreens = [...existingGenerated, ...generatedFromLayouts];
+
+  // Bundle into Next.js project
+  const bundleOptions: BundleOptions = {
+    projectName: options.projectName,
+    screens: allScreens,
+    tokens: shadcnTokens,
+    includeNavigation: options.includeNavigation ?? true,
+  };
+
+  return generateNextJsBundle(bundleOptions);
+}
+
+/**
+ * Main export function that supports both modes.
+ */
+export function generatePrototype(
+  mode: ExportMode,
+  existingScreens: ExtractedScreen[],
+  generatedLayouts: Record<string, GeneratedScreenLayout>,
+  missingFindings: MissingScreenFinding[],
+  tokens?: DesignTokens,
+  options: PrototypeExportOptions & ShadcnExportOptions = { projectName: "prototype" }
+): PrototypeFile[] {
+  if (mode === "nextjs") {
+    // New shadcn-based export (includes AI-generated screens)
+    return generateShadcnPrototype(existingScreens, generatedLayouts, missingFindings, tokens, options);
+  }
+
+  // Legacy HTML export
+  const bundle = generatePrototypeBundle(
+    existingScreens,
+    generatedLayouts,
+    missingFindings,
+    tokens,
+    options
+  );
+
+  return generateAllPrototypeFiles(bundle, options.projectName);
 }
 
 export type { DesignTokens, SemanticColorTokens };

@@ -16,6 +16,7 @@ import { extractMultipleFrameContexts } from "./frame-context";
 import {
   generatePrototypeBundle,
   generateAllPrototypeFiles,
+  generateShadcnPrototype,
 } from "./prototype-export";
 import {
   discoverComponents,
@@ -61,8 +62,8 @@ async function getComponentLibrary(): Promise<ComponentLibrary> {
   return cachedComponentLibrary;
 }
 
-// Discover components on startup (in background)
-getComponentLibrary().catch((e) => console.warn("[edgy] Component discovery failed:", e));
+// Component discovery is now lazy - only triggered when user requests it
+// This avoids blocking plugin startup with figma.loadAllPagesAsync()
 
 // --- Message Handlers ---
 
@@ -162,6 +163,25 @@ figma.ui.onmessage = async (msg: UIMessage) => {
       figma.ui.postMessage({ type: "vercel-token-saved" });
       break;
     }
+
+    case "get-edgy-api-key": {
+      const key = await figma.clientStorage.getAsync("edgy-api-key");
+      figma.ui.postMessage({ type: "edgy-api-key-result", key: key || null });
+      break;
+    }
+
+    case "set-edgy-api-key": {
+      await figma.clientStorage.setAsync("edgy-api-key", msg.key);
+      figma.ui.postMessage({ type: "edgy-api-key-saved" });
+      break;
+    }
+
+    case "clear-edgy-api-key": {
+      await figma.clientStorage.deleteAsync("edgy-api-key");
+      figma.ui.postMessage({ type: "edgy-api-key-saved" });
+      break;
+    }
+
 
     case "get-component-library": {
       try {
@@ -322,7 +342,16 @@ figma.ui.onmessage = async (msg: UIMessage) => {
           const placeholders = await generatePlaceholderFrames(
             results.missing_screen_findings,
             frames,
-            generatedLayouts
+            generatedLayouts,
+            (currentIndex, totalCount, screenName) => {
+              const progressMsg: PluginMessage = {
+                type: "placeholder-progress",
+                currentIndex,
+                totalCount,
+                screenName,
+              };
+              figma.ui.postMessage(progressMsg);
+            }
           );
 
           // Select the new placeholder frames to show the user
@@ -387,28 +416,45 @@ figma.ui.onmessage = async (msg: UIMessage) => {
     case "export-prototype": {
       try {
         const { request } = msg;
+        const exportMode = request.options?.exportMode || "nextjs";
 
         // Send progress update
         const progressMsg: PluginMessage = {
           type: "prototype-progress",
-          message: "Generating prototype bundle...",
+          message: exportMode === "nextjs"
+            ? "Generating Next.js + shadcn prototype..."
+            : "Generating HTML prototype...",
         };
         figma.ui.postMessage(progressMsg);
 
-        // Generate the prototype bundle
-        const bundle = generatePrototypeBundle(
-          request.existingScreens,
-          request.generatedLayouts,
-          request.missingFindings,
-          request.designTokens,
-          request.options
-        );
+        let files;
 
-        // Generate all files
-        const files = generateAllPrototypeFiles(
-          bundle,
-          request.options?.projectName || "prototype"
-        );
+        if (exportMode === "nextjs") {
+          // New shadcn-based export (includes AI-generated screens)
+          files = generateShadcnPrototype(
+            request.existingScreens,
+            request.generatedLayouts || {},
+            request.missingFindings || [],
+            request.designTokens,
+            {
+              projectName: request.options?.projectName || "prototype",
+              includeNavigation: request.options?.includeNavigation,
+            }
+          );
+        } else {
+          // Legacy HTML export
+          const bundle = generatePrototypeBundle(
+            request.existingScreens,
+            request.generatedLayouts,
+            request.missingFindings,
+            request.designTokens,
+            request.options
+          );
+          files = generateAllPrototypeFiles(
+            bundle,
+            request.options?.projectName || "prototype"
+          );
+        }
 
         // Send files back to UI
         const readyMsg: PluginMessage = {

@@ -14,6 +14,8 @@ import type {
   RichAutoLayout,
   RichBorderRadius,
   RichColor,
+  GeneratedElement,
+  GeneratedScreenLayout,
 } from "../ui/lib/types";
 import type { DesignTokens, SemanticColorTokens } from "./screen-designer";
 
@@ -25,19 +27,7 @@ interface RGB {
   b: number;
 }
 
-export interface GeneratedElement {
-  type: "frame" | "text" | "button" | "input" | "card" | "icon" | "separator" | "checkbox" | "image";
-  name: string;
-  x: number;
-  y: number;
-  width: number | "fill";
-  height: number | "hug";
-  style?: ElementStyle;
-  children?: GeneratedElement[];
-  textContent?: string;
-  variant?: string;
-}
-
+// Internal style interface for HTML generation
 interface ElementStyle {
   backgroundColor?: RGB;
   textColor?: RGB;
@@ -142,16 +132,26 @@ function richColorToCss(color: RichColor): string {
 function richFillsToCss(fills: RichFill[]): string {
   if (!fills || fills.length === 0) return "";
 
-  // Use the first visible fill
-  const fill = fills[0];
+  // Find the first visible fill (opacity > 0)
+  const fill = fills.find((f) => f.opacity > 0);
+  if (!fill) return "";
 
   if (fill.type === "solid" && fill.color) {
-    return richColorToCss(fill.color);
+    // Apply fill opacity to the color
+    const colorWithOpacity = {
+      ...fill.color,
+      a: fill.color.a * fill.opacity,
+    };
+    return richColorToCss(colorWithOpacity);
   }
 
   if (fill.type === "gradient" && fill.gradient) {
+    // Apply fill opacity to gradient stops
     const stops = fill.gradient.stops
-      .map((s) => `${richColorToCss(s.color)} ${(s.position * 100).toFixed(1)}%`)
+      .map((s) => {
+        const colorWithOpacity = { ...s.color, a: s.color.a * fill.opacity };
+        return `${richColorToCss(colorWithOpacity)} ${(s.position * 100).toFixed(1)}%`;
+      })
       .join(", ");
 
     if (fill.gradient.type === "linear") {
@@ -799,14 +799,37 @@ ${indent}</div>`;
 
 /**
  * Infers button variant from node properties.
+ * Checks componentName, componentProperties, and node name for variant hints.
  */
 function inferButtonVariant(node: ExtractedNode): string {
   const name = node.name.toLowerCase();
-  if (name.includes("primary") || name.includes("cta")) return "primary";
-  if (name.includes("secondary")) return "secondary";
-  if (name.includes("outline") || name.includes("border")) return "outline";
-  if (name.includes("ghost") || name.includes("text")) return "ghost";
-  if (name.includes("destructive") || name.includes("delete") || name.includes("danger")) return "destructive";
+  const componentName = node.componentName?.toLowerCase() || "";
+
+  // Check componentProperties first (most reliable - from Figma variant system)
+  if (node.componentProperties) {
+    const propValues = Object.values(node.componentProperties)
+      .map(p => (typeof p.value === "string" ? p.value : String(p.value)).toLowerCase())
+      .join(" ");
+
+    if (propValues.includes("secondary") || propValues.includes("outline")) return "outline";
+    if (propValues.includes("ghost") || propValues.includes("text") || propValues.includes("link")) return "ghost";
+    if (propValues.includes("destructive") || propValues.includes("danger") || propValues.includes("delete")) return "destructive";
+    if (propValues.includes("primary") || propValues.includes("filled") || propValues.includes("solid")) return "primary";
+  }
+
+  // Check componentName (e.g., "Button/Secondary" or "Style=Outline")
+  if (componentName.includes("secondary") || componentName.includes("outline")) return "outline";
+  if (componentName.includes("ghost") || componentName.includes("text") || componentName.includes("link")) return "ghost";
+  if (componentName.includes("destructive") || componentName.includes("danger") || componentName.includes("delete")) return "destructive";
+  if (componentName.includes("primary") || componentName.includes("filled")) return "primary";
+
+  // Check node name
+  if (name.includes("secondary") || name.includes("outline") || name.includes("cancel") || name.includes("back")) return "outline";
+  if (name.includes("ghost") || name.includes("skip") || name.includes("link")) return "ghost";
+  if (name.includes("destructive") || name.includes("delete") || name.includes("danger") || name.includes("remove")) return "destructive";
+  if (name.includes("primary") || name.includes("cta") || name.includes("submit") || name.includes("save") || name.includes("continue")) return "primary";
+
+  // Default to primary (caller may override based on context)
   return "primary";
 }
 
@@ -1018,14 +1041,6 @@ function findTextNode(node: ExtractedNode): ExtractedNode | undefined {
 }
 
 // --- Full Page Generation ---
-
-export interface GeneratedScreenLayout {
-  name: string;
-  width: number;
-  height: number;
-  backgroundColor: RGB;
-  elements: GeneratedElement[];
-}
 
 /**
  * Generates a complete HTML page for a screen.

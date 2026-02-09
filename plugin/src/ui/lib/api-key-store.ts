@@ -148,3 +148,48 @@ export function clearVercelToken(): Promise<void> {
     parent.postMessage({ pluginMessage: { type: "clear-vercel-token" } }, "*");
   });
 }
+
+// --- Edgy Server API Key ---
+
+export function getEdgyApiKey(): Promise<string | null> {
+  return new Promise((resolve) => {
+    const handler = (event: MessageEvent) => {
+      const msg = event.data.pluginMessage;
+      if (msg?.type === "edgy-api-key-result") {
+        window.removeEventListener("message", handler);
+        resolve(msg.key);
+      }
+    };
+    window.addEventListener("message", handler);
+    parent.postMessage({ pluginMessage: { type: "get-edgy-api-key" } }, "*");
+  });
+}
+
+export function setEdgyApiKey(key: string): Promise<void> {
+  return new Promise((resolve) => {
+    const handler = (event: MessageEvent) => {
+      const msg = event.data.pluginMessage;
+      if (msg?.type === "edgy-api-key-saved") {
+        window.removeEventListener("message", handler);
+        resolve();
+      }
+    };
+    window.addEventListener("message", handler);
+    parent.postMessage({ pluginMessage: { type: "set-edgy-api-key", key } }, "*");
+  });
+}
+
+export function clearEdgyApiKey(): Promise<void> {
+  return new Promise((resolve) => {
+    const handler = (event: MessageEvent) => {
+      const msg = event.data.pluginMessage;
+      if (msg?.type === "edgy-api-key-saved") {
+        window.removeEventListener("message", handler);
+        resolve();
+      }
+    };
+    window.addEventListener("message", handler);
+    parent.postMessage({ pluginMessage: { type: "clear-edgy-api-key" } }, "*");
+  });
+}
+

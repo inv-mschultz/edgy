@@ -1,12 +1,17 @@
 declare const __APP_VERSION__: string;
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, Suspense, lazy } from "react";
 import { SelectScreens } from "./pages/SelectScreens";
 import { Analyzing, type AnalysisStep } from "./pages/Analyzing";
-import { Results } from "./pages/Results";
-import { Exporting, type ExportStep } from "./pages/Exporting";
-import { ApiKeySettings } from "./components/ApiKeySettings";
-import { Info } from "./pages/Info";
+import type { ExportStep } from "./pages/Exporting";
+
+// Lazy load heavy pages for faster initial load
+const resultsImport = () => import("./pages/Results");
+const Results = lazy(() => resultsImport().then(m => ({ default: m.Results })));
+const exportingImport = () => import("./pages/Exporting");
+const Exporting = lazy(() => exportingImport().then(m => ({ default: m.Exporting })));
+const ApiKeySettings = lazy(() => import("./components/ApiKeySettings").then(m => ({ default: m.ApiKeySettings })));
+const Info = lazy(() => import("./pages/Info").then(m => ({ default: m.Info })));
 import type {
   PluginMessage,
   UIMessage,
@@ -15,13 +20,18 @@ import type {
   PrototypeFile,
   PrototypeExportRequest,
 } from "./lib/types";
-import { runAnalysis } from "./lib/analyze";
-import { getApiKey, getProvider, getAIScreenGeneration, getVercelToken } from "./lib/api-key-store";
-import { reviewWithLLM } from "./lib/llm-reviewer";
+import { getApiKey, getProvider, getAIScreenGeneration, getVercelToken, getEdgyApiKey } from "./lib/api-key-store";
 import { generateScreensBatch, analyzeExistingScreens, type GeneratedScreenLayout, type ScreenGenerationRequest } from "./lib/llm-screen-generator";
 import { getComponentLibrary, type ComponentLibraryData } from "./lib/component-library-client";
 import { deployToVercel, type DeployResult } from "./lib/vercel-deploy";
 import type { DesignTokens } from "./lib/llm-screen-generator";
+import {
+  analyze as analyzeWithServer,
+  setEdgyApiKey,
+  type SSEProgressEvent,
+  type SSECompleteEvent,
+  type SSEErrorEvent,
+} from "./lib/api-client";
 
 // Helper to get design tokens from plugin
 function getDesignTokens(screenIds: string[]): Promise<DesignTokens> {
@@ -64,6 +74,7 @@ export function App() {
   // Store generated layouts from export to reuse for prototype/deploy
   const [exportedLayouts, setExportedLayouts] = useState<Record<string, GeneratedScreenLayout>>({});
   const [exportIncludedPlaceholders, setExportIncludedPlaceholders] = useState(false);
+  const [isAIExport, setIsAIExport] = useState(false);
 
   // Prototype export state
   const [prototypeFiles, setPrototypeFiles] = useState<PrototypeFile[]>([]);
@@ -73,8 +84,12 @@ export function App() {
   // Vercel deployment state
   const [vercelToken, setVercelToken] = useState<string | null>(null);
   const [deployStatus, setDeployStatus] = useState<string>("");
+  const [deployProgress, setDeployProgress] = useState<number>(0);
   const [deployResult, setDeployResult] = useState<DeployResult | null>(null);
   const [urlCopied, setUrlCopied] = useState(false);
+
+  // Server API key state
+  const [edgyApiKey, setEdgyApiKeyState] = useState<string | null>(null);
 
   // Custom scrollbar - pass page as dependency to recalculate on navigation
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -105,9 +120,15 @@ export function App() {
     document.addEventListener("mouseup", handleMouseUp);
   }, []);
 
-  // Load Vercel token on mount
+  // Load tokens and settings on mount
   useEffect(() => {
     getVercelToken().then(setVercelToken);
+    getEdgyApiKey().then((key) => {
+      setEdgyApiKeyState(key);
+      if (key) {
+        setEdgyApiKey(key);
+      }
+    });
   }, []);
 
   // Reload Vercel token when returning from settings
@@ -179,83 +200,152 @@ export function App() {
       // Store extraction data for later use (thumbnails needed for AI generation)
       setExtractionData(data);
 
-      // Mark extraction complete, start patterns
+      // Mark extraction complete
       updateStep("extract", "complete");
-      updateStep("patterns", "in-progress");
 
-      setStatusMessage("Detecting UI patterns...");
-      await new Promise((r) => setTimeout(r, 100)); // Allow UI to update
+      // Get server key and LLM credentials
+      const [serverKey, provider, llmApiKey] = await Promise.all([
+        getEdgyApiKey(),
+        getProvider(),
+        getApiKey(), // Claude/Gemini API key
+      ]);
 
-      // Mark patterns complete, start states check
-      updateStep("patterns", "complete");
-      updateStep("states", "in-progress");
+      // Server analysis requires an Edgy API key
+      if (serverKey) {
+        console.log("[edgy] Using server-side analysis");
+        updateStep("patterns", "in-progress");
+        setStatusMessage("Connecting to Edgy server...");
 
-      setStatusMessage("Checking for missing states...");
-      await new Promise((r) => setTimeout(r, 100));
+        // Get design tokens and component library for server
+        const screenIds = data.screens.map((s) => s.screen_id);
+        let designTokens: DesignTokens | undefined;
+        let componentLibrary: ComponentLibraryData | undefined;
 
-      // Mark states complete, start inputs check
-      updateStep("states", "complete");
-      updateStep("inputs", "in-progress");
+        try {
+          designTokens = await getDesignTokens(screenIds);
+        } catch (e) {
+          console.warn("[edgy] Failed to get design tokens:", e);
+        }
 
-      setStatusMessage("Checking edge inputs...");
-      const heuristicOutput = runAnalysis(data);
+        try {
+          componentLibrary = await getComponentLibrary();
+        } catch (e) {
+          console.warn("[edgy] Failed to get component library:", e);
+        }
 
-      // Mark inputs complete, start recommendations
-      updateStep("inputs", "complete");
-      updateStep("recommendations", "in-progress");
+        // Set the API key for the server client
+        setEdgyApiKey(serverKey);
 
-      // Check if API key is configured for LLM review
-      const [apiKey, provider] = await Promise.all([getApiKey(), getProvider()]);
-      console.log("[edgy] API key retrieved:", apiKey ? `${apiKey.slice(0, 10)}...` : "null", "provider:", provider);
+        // Analyze with server
+        await analyzeWithServer(
+          {
+            fileName: data.file_name,
+            screens: data.screens,
+            designTokens,
+            componentLibrary: componentLibrary ? {
+              serialized: componentLibrary.serialized,
+              components: componentLibrary.components,
+            } : undefined,
+          },
+          {
+            llmProvider: provider,
+            llmApiKey: llmApiKey || undefined,
+            // Don't generate screens during analysis — handle during export for faster results
+            generateMissingScreens: false,
+          },
+          {
+            onProgress: (event: SSEProgressEvent) => {
+              setStatusMessage(event.message);
+              // Map server stages to UI steps
+              switch (event.stage) {
+                case "patterns":
+                  updateStep("patterns", "in-progress");
+                  break;
+                case "rules":
+                  updateStep("patterns", "complete");
+                  updateStep("states", "in-progress");
+                  break;
+                case "expectations":
+                  updateStep("states", "complete");
+                  updateStep("inputs", "in-progress");
+                  break;
+                case "findings":
+                  updateStep("inputs", "complete");
+                  updateStep("recommendations", "in-progress");
+                  break;
+                case "llm_review":
+                  updateStep("recommendations", "complete");
+                  // Only add the AI review step if it doesn't exist yet
+                  setAnalysisSteps((prev) => {
+                    if (prev.some(s => s.id === "ai-review")) {
+                      return prev; // Step already exists
+                    }
+                    return [
+                      ...prev,
+                      { id: "ai-review", label: `Reviewing with ${provider === "gemini" ? "Gemini" : "Claude"}`, status: "in-progress" as const },
+                    ];
+                  });
+                  break;
+                case "generating":
+                  updateStep("ai-review", "complete");
+                  // Add a visible step for screen generation
+                  setAnalysisSteps((prev) => {
+                    if (prev.some(s => s.id === "generating")) return prev;
+                    return [
+                      ...prev,
+                      { id: "generating", label: "Generating missing screens", status: "in-progress" as const },
+                    ];
+                  });
+                  break;
+                case "generation_complete":
+                  updateStep("generating", "complete");
+                  break;
+              }
+            },
+            onComplete: async (event: SSECompleteEvent) => {
+              console.log("[edgy] Server analysis complete");
+              // Mark any remaining steps as complete
+              updateStep("ai-review", "complete");
+              updateStep("generating", "complete");
+              updateStep("recommendations", "complete");
 
-      let output: AnalysisOutput;
+              // Set data and navigate immediately
+              setResults(event.analysis);
+              if (event.generated_layouts) {
+                setExportedLayouts(event.generated_layouts);
+              }
 
-      if (apiKey) {
-        const providerName = provider === "gemini" ? "Gemini" : "Claude";
-        setStatusMessage(`Reviewing with ${providerName}...`);
-
-        // Add AI review step
-        setAnalysisSteps((prev) => [
-          ...prev.map((s) => (s.id === "recommendations" ? { ...s, status: "complete" as const } : s)),
-          { id: "ai-review", label: `Reviewing with ${providerName}`, status: "in-progress" as const },
-        ]);
-
-        const llmResult = await reviewWithLLM(
-          heuristicOutput,
-          data,
-          apiKey,
-          provider,
-          (msg) => setStatusMessage(msg)
+              // Ensure Results chunk is loaded before navigating
+              await resultsImport();
+              setPage("results");
+            },
+            onError: (event: SSEErrorEvent) => {
+              console.error("[edgy] Server analysis error:", event);
+              setError(`Server error: ${event.message}. Make sure the Edgy server is running.`);
+              setPage("select");
+            },
+          }
         );
 
-        // Mark AI review complete
-        updateStep("ai-review", "complete");
-
-        console.log("[edgy] LLM review returned, wasEnhanced:", llmResult.wasEnhanced);
-        output = {
-          ...llmResult.output,
-          llm_enhanced: llmResult.wasEnhanced,
-          llm_error: llmResult.error,
-        };
-      } else {
-        updateStep("recommendations", "complete");
-        output = heuristicOutput;
+        return;
       }
 
-      console.log("[edgy] Setting results...");
-      setResults(output);
-      console.log("[edgy] Setting page to results...");
-      setPage("results");
-      console.log("[edgy] Done!");
+      // No server key configured - show error
+      setError("Please configure your Edgy API key in Settings to run analysis.");
+      setPage("select");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Analysis failed");
       setPage("select");
     }
   }
 
+
   function handleAnalyze() {
     setError(null);
     setResults(null);
+
+    // Preload Results page chunk so it's ready when analysis completes
+    resultsImport();
 
     // Initialize analysis steps
     const initialSteps: AnalysisStep[] = [
@@ -290,6 +380,7 @@ export function App() {
     ]);
 
     const willGenerateWithAI = includePlaceholders && missingScreens.length > 0 && apiKey && useAIGeneration && extractionData;
+    setIsAIExport(!!willGenerateWithAI);
 
     // Build initial steps
     const steps: ExportStep[] = [
@@ -423,6 +514,11 @@ export function App() {
           }
         }
 
+        // Set up progress tracking for non-AI generation
+        if (!willGenerateWithAI) {
+          setTotalScreensToGenerate(missingScreens.length);
+        }
+
         // Now send the placeholders to canvas
         postToPlugin({
           type: "save-findings",
@@ -431,13 +527,16 @@ export function App() {
           generatedLayouts,
         });
 
-        // Wait for render-complete
+        // Wait for render-complete, and handle progress updates
         await new Promise<void>((resolve) => {
           const handler = (event: MessageEvent) => {
             const msg = event.data.pluginMessage as PluginMessage;
             if (msg?.type === "render-complete") {
               window.removeEventListener("message", handler);
               resolve();
+            } else if (msg?.type === "placeholder-progress") {
+              setCurrentScreenIndex(msg.currentIndex);
+              setCurrentScreenName(msg.screenName);
             }
           };
           window.addEventListener("message", handler);
@@ -537,10 +636,31 @@ export function App() {
   async function handleDeployToVercel(_includeGenerated: boolean = true) {
     if (!results || !extractionData || !vercelToken) return;
 
+    // Creative build steps
+    const buildSteps = [
+      "Packaging assets...",
+      "Optimizing images...",
+      "Bundling components...",
+      "Minifying code...",
+      "Configuring routes...",
+      "Uploading to Vercel...",
+      "Provisioning CDN...",
+      "Finalizing deployment...",
+    ];
+
     // Reset deployment state
     setDeployResult(null);
-    setDeployStatus("Generating prototype files...");
+    setDeployProgress(0);
+    setDeployStatus(buildSteps[0]);
     setPage("deploying-vercel");
+
+    // Start progress animation
+    let stepIndex = 0;
+    const progressInterval = setInterval(() => {
+      stepIndex = (stepIndex + 1) % buildSteps.length;
+      setDeployStatus(buildSteps[stepIndex]);
+      setDeployProgress((prev) => Math.min(prev + 8, 90));
+    }, 1200);
 
     try {
       const missingScreens = results.missing_screen_findings || [];
@@ -565,7 +685,7 @@ export function App() {
           includeNavigation: true,
           imageBasedFallback: true,
           projectName: extractionData.file_name || "prototype",
-          exportMode: "nextjs", // Use new shadcn-based export
+          exportMode: "nextjs", // Use Next.js + shadcn for high-quality output
         },
       };
 
@@ -585,19 +705,23 @@ export function App() {
         postToPlugin({ type: "export-prototype", request });
       });
 
-      setDeployStatus("Deploying to Vercel...");
-
       // Deploy to Vercel
       const result = await deployToVercel(
         files,
         vercelToken,
         extractionData.file_name || "prototype",
-        (message) => setDeployStatus(message)
+        (message) => {
+          setDeployStatus(message);
+          setDeployProgress((prev) => Math.min(prev + 5, 95));
+        }
       );
 
+      clearInterval(progressInterval);
+      setDeployProgress(100);
       setDeployResult(result);
 
     } catch (err) {
+      clearInterval(progressInterval);
       console.error("[edgy] Vercel deployment failed:", err);
       setDeployResult({
         success: false,
@@ -698,56 +822,71 @@ export function App() {
               screenCount={screens.length}
             />
           )}
-          {page === "results" && results && (
-            <Results
-              results={results}
-              onExportToCanvas={handleExportToCanvas}
-              onStartOver={() => {
-                setResults(null);
-                setPage("select");
-              }}
-            />
-          )}
-          {page === "exporting" && (
-            <Exporting
-              steps={exportSteps}
-              currentScreenName={currentScreenName}
-              currentScreenIndex={currentScreenIndex}
-              totalScreens={totalScreensToGenerate}
-              isComplete={exportComplete}
-              hasVercelToken={!!vercelToken}
-              onDone={() => {
-                setResults(null);
-                setPage("select");
-              }}
-              onDownloadPrototype={() => handleExportPrototype(true)}
-              onDeployLive={() => handleDeployToVercel(true)}
-            />
-          )}
+          <Suspense fallback={<div className="flex-1 flex items-center justify-center"><div className="w-6 h-6 border-2 border-gray-300 border-t-purple-600 rounded-full animate-spin" /></div>}>
+            {page === "results" && results && (
+              <Results
+                results={results}
+                onExportToCanvas={handleExportToCanvas}
+                onStartOver={() => {
+                  setResults(null);
+                  setPage("select");
+                }}
+              />
+            )}
+            {page === "exporting" && (
+              <Exporting
+                steps={exportSteps}
+                currentScreenName={currentScreenName}
+                currentScreenIndex={currentScreenIndex}
+                totalScreens={totalScreensToGenerate}
+                isComplete={exportComplete}
+                isAIGeneration={isAIExport}
+                onDone={() => {
+                  setResults(null);
+                  setPage("select");
+                }}
+              />
+            )}
           {page === "exporting-prototype" && (
-            <div className="flex flex-col items-center justify-center p-8 min-h-[300px]">
+            <div className="flex flex-col h-full min-h-[400px]">
               {!prototypeExportComplete ? (
                 <>
-                  <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mb-4" />
-                  <p className="text-sm text-muted-foreground text-center">
-                    {prototypeExportStatus}
-                  </p>
+                  {/* Centered content */}
+                  <div className="flex-1 flex flex-col items-center justify-center px-6">
+                    <h3 className="text-lg font-semibold mb-6" style={{ color: '#4A1A6B' }}>
+                      Building prototype...
+                    </h3>
+                    {/* Animated progress bar */}
+                    <div className="w-full max-w-xs h-2 bg-gray-200 rounded-full overflow-hidden mb-4">
+                      <div className="h-full rounded-full animate-progress-loading" style={{ width: '100%' }} />
+                    </div>
+                    <p className="text-sm text-center" style={{ color: '#6B7280' }}>
+                      {prototypeExportStatus}
+                    </p>
+                  </div>
                 </>
               ) : (
                 <>
-                  <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mb-4">
-                    <svg className="w-6 h-6 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
+                  {/* Centered content */}
+                  <div className="flex-1 flex flex-col items-center justify-center px-6">
+                    <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mb-4">
+                      <svg className="w-7 h-7 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2" style={{ color: '#4A1A6B' }}>
+                      Prototype Ready!
+                    </h3>
+                    <p className="text-sm text-center" style={{ color: '#6B7280' }}>
+                      {prototypeFiles.length} files generated
+                    </p>
                   </div>
-                  <h3 className="text-lg font-semibold mb-2">Prototype Ready!</h3>
-                  <p className="text-sm text-muted-foreground text-center mb-4">
-                    {prototypeFiles.length} files generated
-                  </p>
-                  <div className="flex flex-col gap-2 w-full max-w-xs">
+                  {/* Buttons at bottom */}
+                  <div className="flex flex-col gap-2 p-4">
                     <button
                       onClick={handleDownloadPrototype}
-                      className="w-full py-2.5 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
+                      className="w-full py-3 px-6 rounded-full text-sm font-semibold transition-all"
+                      style={{ backgroundColor: '#4A1A6B', color: 'white' }}
                     >
                       Download Prototype
                     </button>
@@ -757,7 +896,8 @@ export function App() {
                         setPrototypeExportComplete(false);
                         setPrototypeFiles([]);
                       }}
-                      className="w-full py-2.5 px-4 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80"
+                      className="w-full py-3 px-6 rounded-full text-sm font-semibold transition-all"
+                      style={{ backgroundColor: '#FFF8E7', color: '#4A1A6B' }}
                     >
                       Back to Results
                     </button>
@@ -767,49 +907,71 @@ export function App() {
             </div>
           )}
           {page === "deploying-vercel" && (
-            <div className="flex flex-col items-center justify-center p-8 min-h-[300px]">
+            <div className="flex flex-col h-full min-h-[400px]">
               {!deployResult ? (
                 <>
-                  <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mb-4" />
-                  <p className="text-sm text-muted-foreground text-center">
-                    {deployStatus}
-                  </p>
+                  {/* Centered content */}
+                  <div className="flex-1 flex flex-col items-center justify-center px-6">
+                    <h3 className="text-lg font-semibold mb-6" style={{ color: '#4A1A6B' }}>
+                      Deploying to Vercel...
+                    </h3>
+                    {/* Growing progress bar with gradient */}
+                    <div className="w-full max-w-xs h-2 bg-gray-200 rounded-full overflow-hidden mb-4">
+                      <div
+                        className="h-full rounded-full transition-all duration-500 ease-out"
+                        style={{
+                          width: `${deployProgress}%`,
+                          background: 'linear-gradient(90deg, #4A1A6B 0%, #6B2D8A 50%, #8B45AA 100%)'
+                        }}
+                      />
+                    </div>
+                    <p className="text-sm text-center" style={{ color: '#6B7280' }}>
+                      {deployStatus}
+                    </p>
+                  </div>
                 </>
               ) : deployResult.success ? (
                 <>
-                  <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mb-4">
-                    <svg className="w-6 h-6 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2">Deployed!</h3>
-                  <p className="text-sm text-muted-foreground text-center mb-4">
-                    Your prototype is live
-                  </p>
-                  <div className="w-full max-w-xs bg-secondary rounded-lg p-3 mb-4">
-                    <div className="flex items-center gap-2">
-                      <code className="flex-1 text-xs text-primary break-all">
-                        {deployResult.url}
-                      </code>
-                      <button
-                        onClick={handleCopyUrl}
-                        className="p-1.5 rounded hover:bg-background transition-colors"
-                        title="Copy URL"
-                      >
-                        {urlCopied ? (
-                          <Check className="w-4 h-4 text-green-600" />
-                        ) : (
-                          <Copy className="w-4 h-4 text-muted-foreground" />
-                        )}
-                      </button>
+                  {/* Centered content */}
+                  <div className="flex-1 flex flex-col items-center justify-center px-6">
+                    <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mb-4">
+                      <svg className="w-7 h-7 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2" style={{ color: '#4A1A6B' }}>
+                      Deployed!
+                    </h3>
+                    <p className="text-sm text-center mb-4" style={{ color: '#6B7280' }}>
+                      Your prototype is live
+                    </p>
+                    <div className="w-full max-w-xs bg-gray-100 rounded-lg p-3">
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 text-xs break-all" style={{ color: '#4A1A6B' }}>
+                          {deployResult.url}
+                        </code>
+                        <button
+                          onClick={handleCopyUrl}
+                          className="p-1.5 rounded hover:bg-white transition-colors"
+                          title="Copy URL"
+                        >
+                          {urlCopied ? (
+                            <Check className="w-4 h-4 text-green-600" />
+                          ) : (
+                            <Copy className="w-4 h-4" style={{ color: '#6B7280' }} />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex flex-col gap-2 w-full max-w-xs">
+                  {/* Buttons at bottom */}
+                  <div className="flex flex-col gap-2 p-4">
                     <a
                       href={deployResult.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-full py-2.5 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 flex items-center justify-center gap-2"
+                      className="w-full py-3 px-6 rounded-full text-sm font-semibold transition-all flex items-center justify-center gap-2"
+                      style={{ backgroundColor: '#4A1A6B', color: 'white' }}
                     >
                       <ExternalLink className="w-4 h-4" />
                       Open Prototype
@@ -819,7 +981,8 @@ export function App() {
                         setPage("results");
                         setDeployResult(null);
                       }}
-                      className="w-full py-2.5 px-4 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80"
+                      className="w-full py-3 px-6 rounded-full text-sm font-semibold transition-all"
+                      style={{ backgroundColor: '#FFF8E7', color: '#4A1A6B' }}
                     >
                       Back to Results
                     </button>
@@ -827,17 +990,24 @@ export function App() {
                 </>
               ) : (
                 <>
-                  <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-4">
-                    <X className="w-6 h-6 text-red-600" />
+                  {/* Centered content */}
+                  <div className="flex-1 flex flex-col items-center justify-center px-6">
+                    <div className="w-14 h-14 rounded-full flex items-center justify-center mb-4" style={{ backgroundColor: '#FEE2E2' }}>
+                      <X className="w-7 h-7" style={{ color: '#DC2626' }} />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2" style={{ color: '#4A1A6B' }}>
+                      Deployment Failed
+                    </h3>
+                    <p className="text-sm text-center" style={{ color: '#DC2626' }}>
+                      {deployResult.error}
+                    </p>
                   </div>
-                  <h3 className="text-lg font-semibold mb-2">Deployment Failed</h3>
-                  <p className="text-sm text-destructive text-center mb-4">
-                    {deployResult.error}
-                  </p>
-                  <div className="flex flex-col gap-2 w-full max-w-xs">
+                  {/* Buttons at bottom */}
+                  <div className="flex flex-col gap-2 p-4">
                     <button
                       onClick={() => handleDeployToVercel(true)}
-                      className="w-full py-2.5 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
+                      className="w-full py-3 px-6 rounded-full text-sm font-semibold transition-all"
+                      style={{ backgroundColor: '#4A1A6B', color: 'white' }}
                     >
                       Try Again
                     </button>
@@ -846,7 +1016,8 @@ export function App() {
                         setPage("results");
                         setDeployResult(null);
                       }}
-                      className="w-full py-2.5 px-4 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80"
+                      className="w-full py-3 px-6 rounded-full text-sm font-semibold transition-all"
+                      style={{ backgroundColor: '#FFF8E7', color: '#4A1A6B' }}
                     >
                       Back to Results
                     </button>
@@ -855,8 +1026,9 @@ export function App() {
               )}
             </div>
           )}
-          {page === "settings" && <ApiKeySettings />}
-          {page === "info" && <Info />}
+            {page === "settings" && <ApiKeySettings />}
+            {page === "info" && <Info />}
+          </Suspense>
         </div>
 
         {customScrollbar.showScrollbar && (

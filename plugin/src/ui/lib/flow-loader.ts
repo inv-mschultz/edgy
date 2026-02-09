@@ -1,11 +1,10 @@
 /**
  * Flow Rule Loader
  *
- * Loads bundled flow rules from the virtual module.
+ * Lazy-loads bundled flow rules from the virtual module.
  */
 
-import { flows as flowModules } from "virtual:edgy-knowledge";
-import type { FlowType, ComponentSuggestion } from "./types";
+import type { FlowType } from "./types";
 
 // --- Types ---
 
@@ -40,33 +39,51 @@ export interface FlowRule {
   expected_screens: ExpectedScreen[];
 }
 
+// Lazy-loaded cache
+let cachedFlowRules: FlowRule[] | null = null;
+let loadPromise: Promise<void> | null = null;
+
+async function ensureLoaded(): Promise<void> {
+  if (cachedFlowRules) return;
+
+  if (!loadPromise) {
+    loadPromise = (async () => {
+      const { flows: flowModules } = await import("virtual:edgy-knowledge");
+
+      const rules: FlowRule[] = [];
+      for (const [, parsed] of Object.entries(flowModules)) {
+        if ((parsed as any)?.flow_type && (parsed as any)?.expected_screens) {
+          rules.push({
+            flow_type: (parsed as any).flow_type as FlowType,
+            name: (parsed as any).name || "",
+            description: (parsed as any).description || "",
+            triggers: (parsed as any).triggers,
+            expected_screens: ((parsed as any).expected_screens || []).map((screen: any) => ({
+              id: screen.id || "",
+              name: screen.name || "",
+              description: screen.description || "",
+              required: screen.required ?? false,
+              severity: screen.severity,
+              detection: screen.detection || {},
+              components: screen.components || [],
+            })),
+          });
+        }
+      }
+      cachedFlowRules = rules;
+    })();
+  }
+
+  await loadPromise;
+}
+
 // --- Public API ---
 
 /**
  * Returns all flow rules from the bundled knowledge base.
+ * Lazy-loads on first access.
  */
-export function loadBundledFlowRules(): FlowRule[] {
-  const rules: FlowRule[] = [];
-
-  for (const [, parsed] of Object.entries(flowModules)) {
-    if (parsed?.flow_type && parsed?.expected_screens) {
-      rules.push({
-        flow_type: parsed.flow_type as FlowType,
-        name: parsed.name || "",
-        description: parsed.description || "",
-        triggers: parsed.triggers,
-        expected_screens: (parsed.expected_screens || []).map((screen: any) => ({
-          id: screen.id || "",
-          name: screen.name || "",
-          description: screen.description || "",
-          required: screen.required ?? false,
-          severity: screen.severity,
-          detection: screen.detection || {},
-          components: screen.components || [],
-        })),
-      });
-    }
-  }
-
-  return rules;
+export async function loadBundledFlowRules(): Promise<FlowRule[]> {
+  await ensureLoaded();
+  return cachedFlowRules!;
 }

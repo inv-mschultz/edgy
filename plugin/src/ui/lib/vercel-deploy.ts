@@ -19,7 +19,7 @@ interface VercelDeploymentRequest {
   name: string;
   files: VercelFile[];
   projectSettings?: {
-    framework?: null;
+    framework?: "nextjs" | null;
   };
   target?: "production" | "preview";
 }
@@ -105,12 +105,14 @@ export async function deployToVercel(
     const deploymentName = generateProjectName(projectName);
     onProgress?.(`Creating deployment: ${deploymentName}...`);
 
-    // Create deployment
+    // Create deployment - detect if it's a Next.js project
+    const hasNextConfig = files.some((f) => f.path === "next.config.mjs" || f.path === "next.config.js");
+
     const deployRequest: VercelDeploymentRequest = {
       name: deploymentName,
       files: vercelFiles,
       projectSettings: {
-        framework: null, // Static files, no framework
+        framework: hasNextConfig ? "nextjs" : null,
       },
       target: "production",
     };

@@ -1,0 +1,27 @@
+{
+  "name": "edgy-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx --watch src/index.ts",
+    "build": "tsc",
+    "lint": "eslint src --ext .ts",
+    "db:push": "drizzle-kit push",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.9",
+    "drizzle-orm": "^0.45.1",
+    "hono": "^4.6.0",
+    "postgres": "^3.4.8",
+    "tsx": "^4.21.0",
+    "yaml": "^2.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "drizzle-kit": "^0.31.8",
+    "typescript": "^5.7.0",
+    "vercel": "^39.0.0"
+  }
+}

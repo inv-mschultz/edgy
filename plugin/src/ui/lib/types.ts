@@ -271,6 +271,37 @@ export type EdgeCaseCategory =
 
 export type AIProvider = "claude" | "gemini";
 
+// --- Design Tokens ---
+
+export interface SemanticColorTokens {
+  primary?: { r: number; g: number; b: number };
+  primaryForeground?: { r: number; g: number; b: number };
+  secondary?: { r: number; g: number; b: number };
+  secondaryForeground?: { r: number; g: number; b: number };
+  destructive?: { r: number; g: number; b: number };
+  destructiveForeground?: { r: number; g: number; b: number };
+  muted?: { r: number; g: number; b: number };
+  mutedForeground?: { r: number; g: number; b: number };
+  background?: { r: number; g: number; b: number };
+  foreground?: { r: number; g: number; b: number };
+  border?: { r: number; g: number; b: number };
+  card?: { r: number; g: number; b: number };
+  cardForeground?: { r: number; g: number; b: number };
+}
+
+export interface DesignTokens {
+  primaryColor: { r: number; g: number; b: number };
+  backgroundColor: { r: number; g: number; b: number };
+  textColor: { r: number; g: number; b: number };
+  mutedColor: { r: number; g: number; b: number };
+  borderColor: { r: number; g: number; b: number };
+  borderRadius: number;
+  fontFamily: string;
+  baseFontSize: number;
+  headingFontSize: number;
+  semanticColors?: SemanticColorTokens;
+}
+
 // --- Plugin ↔ UI Messages ---
 
 // --- Plugin -> UI Messages ---
@@ -291,8 +322,13 @@ export type PluginMessage =
   | { type: "canvas-documentation-cleared"; removedCount: number }
   | { type: "prototype-ready"; files: PrototypeFile[] }
   | { type: "prototype-progress"; message: string }
+  | { type: "placeholder-progress"; currentIndex: number; totalCount: number; screenName: string }
   | { type: "vercel-token-result"; token: string | null }
   | { type: "vercel-token-saved" }
+  | { type: "edgy-api-key-result"; key: string | null }
+  | { type: "edgy-api-key-saved" }
+  | { type: "use-server-mode-result"; enabled: boolean }
+  | { type: "use-server-mode-saved" }
   | {
       type: "component-library-result";
       serialized: string;
@@ -302,32 +338,7 @@ export type PluginMessage =
   | { type: "component-instantiated"; success: boolean; nodeId?: string; error?: string }
   | {
       type: "design-tokens-result";
-      tokens: {
-        primaryColor: { r: number; g: number; b: number };
-        backgroundColor: { r: number; g: number; b: number };
-        textColor: { r: number; g: number; b: number };
-        mutedColor: { r: number; g: number; b: number };
-        borderColor: { r: number; g: number; b: number };
-        borderRadius: number;
-        fontFamily: string;
-        baseFontSize: number;
-        headingFontSize: number;
-        semanticColors?: {
-          primary?: { r: number; g: number; b: number };
-          primaryForeground?: { r: number; g: number; b: number };
-          secondary?: { r: number; g: number; b: number };
-          secondaryForeground?: { r: number; g: number; b: number };
-          destructive?: { r: number; g: number; b: number };
-          destructiveForeground?: { r: number; g: number; b: number };
-          muted?: { r: number; g: number; b: number };
-          mutedForeground?: { r: number; g: number; b: number };
-          background?: { r: number; g: number; b: number };
-          foreground?: { r: number; g: number; b: number };
-          border?: { r: number; g: number; b: number };
-          card?: { r: number; g: number; b: number };
-          cardForeground?: { r: number; g: number; b: number };
-        };
-      };
+      tokens: DesignTokens;
     };
 
 // Component info from plugin
@@ -370,6 +381,8 @@ export interface GeneratedElement {
 }
 
 // Prototype export types
+export type ExportMode = "html" | "nextjs";
+
 export interface PrototypeExportRequest {
   existingScreens: ExtractedScreen[];
   generatedLayouts: Record<string, GeneratedScreenLayout>;
@@ -389,6 +402,8 @@ export interface PrototypeExportRequest {
     includeNavigation?: boolean;
     imageBasedFallback?: boolean;
     projectName?: string;
+    /** Export mode: 'html' for legacy, 'nextjs' for shadcn-based */
+    exportMode?: ExportMode;
   };
 }
 
@@ -410,6 +425,11 @@ export type UIMessage =
   | { type: "get-vercel-token" }
   | { type: "set-vercel-token"; token: string }
   | { type: "clear-vercel-token" }
+  | { type: "get-edgy-api-key" }
+  | { type: "set-edgy-api-key"; key: string }
+  | { type: "clear-edgy-api-key" }
+  | { type: "get-use-server-mode" }
+  | { type: "set-use-server-mode"; enabled: boolean }
   | { type: "clear-findings"; screenIds: string[] }
   | { type: "clear-canvas-documentation" }
   | { type: "resize"; width: number; height: number }

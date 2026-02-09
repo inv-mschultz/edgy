@@ -154,7 +154,7 @@ export function HealthGauge({ health, animate = true }: HealthGaugeProps) {
             className="text-xs font-medium"
             style={{ color: '#6B7280' }}
           >
-            Edge cases covered
+            Flow Health
           </span>
         </div>
       </div>

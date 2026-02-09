@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import type { AnalysisOutput, MissingScreenFinding, ScreenResult, AnalysisFinding } from "../lib/types";
 import { Sparkles, AlertTriangle, X, Info as InfoIcon } from "lucide-react";
 import { HealthGauge } from "../components/HealthGauge";
@@ -10,33 +10,50 @@ interface Props {
 }
 
 /**
- * Calculate health score from 0-100 based on findings.
- * Starts at 100 and deducts points based on severity.
+ * Calculate flow health score from 0-100.
+ *
+ * Each screen gets a health score based on its worst finding severity:
+ *   - No findings:        1.0  (fully healthy)
+ *   - Only info findings:  0.85 (minor notes)
+ *   - Has warnings:        0.5  (needs attention)
+ *   - Has critical:        0.2  (needs immediate work)
+ *   - Missing screen:      0.0  (not designed yet)
+ *
+ * Flow health = average of all screen scores (present + missing).
  */
 function calculateHealth(results: AnalysisOutput): number {
-  let health = 100;
+  const missingCount = (results.missing_screen_findings || []).length;
+  const screenCount = results.screens.length;
+  const totalScreens = screenCount + missingCount;
 
-  // Deduct for screen findings
-  health -= results.summary.critical * 15;
-  health -= results.summary.warning * 8;
-  health -= results.summary.info * 3;
+  if (totalScreens === 0) return 100;
 
-  // Deduct for missing screens
-  const missingScreens = results.missing_screen_findings || [];
-  for (const finding of missingScreens) {
-    if (finding.severity === "critical") health -= 10;
-    else if (finding.severity === "warning") health -= 5;
-    else health -= 2;
+  // Score each present screen based on its worst finding
+  let totalScore = 0;
+  for (const screen of results.screens) {
+    const findings = screen.findings;
+    if (findings.length === 0) {
+      totalScore += 1.0;
+    } else if (findings.some((f) => f.severity === "critical")) {
+      totalScore += 0.2;
+    } else if (findings.some((f) => f.severity === "warning")) {
+      totalScore += 0.5;
+    } else {
+      totalScore += 0.85; // info only
+    }
   }
 
-  // Deduct for flow-level findings
-  for (const finding of results.flow_findings) {
-    if (finding.severity === "critical") health -= 12;
-    else if (finding.severity === "warning") health -= 6;
-    else health -= 2;
-  }
+  // Missing screens contribute 0.0 each (already excluded from totalScore)
 
-  return Math.max(0, Math.min(100, Math.round(health)));
+  // Small penalty for flow-level findings (not tied to a specific screen)
+  const flowPenalty = results.flow_findings.reduce((sum, f) => {
+    if (f.severity === "critical") return sum + 0.05;
+    if (f.severity === "warning") return sum + 0.03;
+    return sum + 0.01;
+  }, 0);
+
+  const rawScore = (totalScore / totalScreens) * 100 - flowPenalty * 100;
+  return Math.max(0, Math.min(100, Math.round(rawScore)));
 }
 
 // --- Flow Grouping ---
@@ -191,11 +208,10 @@ function countFlowFindings(group: FlowGroup): number {
 
 export function Results({ results, onExportToCanvas, onStartOver }: Props) {
   const { summary } = results;
-  const [includePlaceholders, setIncludePlaceholders] = useState(false);
+  const includePlaceholders = false;
 
   // Group all findings by flow type
   const flowGroups = groupAllFindingsByFlow(results);
-  const hasMissingScreens = (results.missing_screen_findings || []).length > 0;
 
   // Calculate health score
   const health = calculateHealth(results);
@@ -217,36 +233,42 @@ export function Results({ results, onExportToCanvas, onStartOver }: Props) {
       {/* Summary text */}
       <div className="text-center">
         <span className="text-sm font-semibold" style={{ color: '#4A1A6B' }}>
-          {totalFindings} edge case{totalFindings !== 1 ? 's' : ''} across {screenCount} screen{screenCount !== 1 ? 's' : ''}
+          {totalFindings} finding{totalFindings !== 1 ? 's' : ''} across {screenCount} screen{screenCount !== 1 ? 's' : ''}
         </span>
       </div>
 
-      {/* Severity cards - full width colored bars */}
+      {/* Severity cards - full width colored bars, hidden when count is 0 */}
       <div className="flex flex-col gap-2">
-        <SeverityCard
-          icon={<X className="w-5 h-5" strokeWidth={3} />}
-          count={summary.critical}
-          label="essential changes"
-          bgColor="#FEE2E2"
-          textColor="#991B1B"
-          iconColor="#DC2626"
-        />
-        <SeverityCard
-          icon={<AlertTriangle className="w-5 h-5" />}
-          count={summary.warning}
-          label="advisable changes"
-          bgColor="#FEF3C7"
-          textColor="#92400E"
-          iconColor="#D97706"
-        />
-        <SeverityCard
-          icon={<InfoIcon className="w-5 h-5" />}
-          count={summary.info}
-          label="optional change"
-          bgColor="#DBEAFE"
-          textColor="#1E40AF"
-          iconColor="#2563EB"
-        />
+        {summary.critical > 0 && (
+          <SeverityCard
+            icon={<X className="w-5 h-5" strokeWidth={3} />}
+            count={summary.critical}
+            label="essential changes"
+            bgColor="#FEE2E2"
+            textColor="#991B1B"
+            iconColor="#DC2626"
+          />
+        )}
+        {summary.warning > 0 && (
+          <SeverityCard
+            icon={<AlertTriangle className="w-5 h-5" />}
+            count={summary.warning}
+            label="advisable changes"
+            bgColor="#FEF3C7"
+            textColor="#92400E"
+            iconColor="#D97706"
+          />
+        )}
+        {summary.info > 0 && (
+          <SeverityCard
+            icon={<InfoIcon className="w-5 h-5" />}
+            count={summary.info}
+            label="optional change"
+            bgColor="#DBEAFE"
+            textColor="#1E40AF"
+            iconColor="#2563EB"
+          />
+        )}
       </div>
 
       {/* Findings grouped by flow */}
@@ -270,31 +292,6 @@ export function Results({ results, onExportToCanvas, onStartOver }: Props) {
 
       {/* Actions */}
       <div className="flex flex-col pt-2">
-        {hasMissingScreens && (
-          <label
-            className="flex items-center gap-2 text-sm cursor-pointer select-none group mb-4"
-            onClick={() => setIncludePlaceholders(!includePlaceholders)}
-          >
-            <span
-              className={`
-                flex items-center justify-center w-5 h-5 rounded transition-colors shrink-0 border-2
-                ${includePlaceholders
-                  ? 'bg-primary border-primary'
-                  : 'bg-white border-gray-300 group-hover:border-gray-400'
-                }
-              `}
-            >
-              {includePlaceholders && (
-                <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none">
-                  <path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              )}
-            </span>
-            <span className="text-muted-foreground">
-              Generate placeholder for missing screens
-            </span>
-          </label>
-        )}
         <div className="flex flex-col gap-2">
           <button
             onClick={() => onExportToCanvas(includePlaceholders)}
@@ -306,12 +303,8 @@ export function Results({ results, onExportToCanvas, onStartOver }: Props) {
 
           <button
             onClick={onStartOver}
-            className="w-full py-3 px-6 rounded-full text-sm font-semibold transition-all border-2"
-            style={{
-              backgroundColor: '#FEF3C7',
-              borderColor: '#FEF3C7',
-              color: '#4A1A6B'
-            }}
+            className="w-full py-3 px-6 rounded-full text-sm font-semibold transition-all"
+            style={{ backgroundColor: '#FFF8E7', color: '#4A1A6B' }}
           >
             Analyse another flow
           </button>

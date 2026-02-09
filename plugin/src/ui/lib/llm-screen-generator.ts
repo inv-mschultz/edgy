@@ -124,13 +124,17 @@ const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 // Use Sonnet for good balance of speed and quality
 const CLAUDE_MODEL = "claude-sonnet-4-20250514";
-const GEMINI_MODEL = "gemini-2.0-flash";
+const GEMINI_MODEL = "gemini-3-flash-preview";
 const MAX_TOKENS = 4096;
 // Maximum concurrent LLM requests to avoid rate limiting
 // Process requests sequentially to avoid rate limits
 const MAX_CONCURRENT_REQUESTS = 1;
-// Delay between requests in milliseconds
-const REQUEST_DELAY_MS = 1000;
+// Delay between requests in milliseconds (provider-specific)
+const CLAUDE_REQUEST_DELAY_MS = 500;
+const GEMINI_REQUEST_DELAY_MS = 2000; // Gemini: balance speed vs rate limits
+// Retry configuration for rate limits
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY_MS = 2000;
 
 // --- System Prompt ---
 
@@ -223,6 +227,15 @@ For headings, paragraphs, labels. MUST have meaningful textContent.
 ### button
 For action buttons. MUST have descriptive textContent like "Save Changes", "Continue", "Skip for Now".
 Variants: "primary" (filled), "secondary" (gray), "outline" (bordered), "ghost" (text only), "destructive" (red)
+
+**CRITICAL RULE - Button Hierarchy**: When multiple buttons appear together, they MUST have different variants:
+- NEVER use two "primary" buttons together
+- In vertical stacks: top button = primary, bottom button = outline/ghost/secondary
+- In horizontal rows: right button = primary action, left button = outline/secondary
+- Examples:
+  - "Cancel" (outline) + "Save" (primary)
+  - "Go Back" (outline) + "Delete" (destructive)
+  - "Continue" (primary) with "Skip for now" (ghost) below
 
 ### input
 For text inputs. textContent is the placeholder - make it helpful like "Enter your email" not "Enter value...".
@@ -408,9 +421,10 @@ export async function generateScreensBatch(
       results.set(screenId, result);
     }
 
-    // Add delay between batches to avoid rate limiting
+    // Add delay between batches to avoid rate limiting (provider-specific)
     if (batches.indexOf(batch) < batches.length - 1) {
-      await new Promise((resolve) => setTimeout(resolve, REQUEST_DELAY_MS));
+      const delayMs = provider === "gemini" ? GEMINI_REQUEST_DELAY_MS : CLAUDE_REQUEST_DELAY_MS;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
   }
 
@@ -491,13 +505,17 @@ ${request.flowContext.suggestedComponents
   .map((c) => `- ${c.name} (${c.shadcn_id}${c.variant ? `, variant: ${c.variant}` : ""})`)
   .join("\n")}
 ${request.availableComponents?.serialized ? `
-## Available Components from Design System (USE THESE!)
+## Available Components from Design System (MUST USE!)
 
-The following real components are available in the Figma file. **USE THEM** by setting type="component" and componentRef.name to the component name:
+The following real components exist in the Figma file. You MUST use them:
 
 ${request.availableComponents.serialized}
 
-**IMPORTANT**: When a component exists in this list, use type="component" with componentRef instead of creating a primitive button/input/card!
+**CRITICAL**: For buttons, inputs, cards, and checkboxes - if a matching component exists above, you MUST use type="component" with componentRef.name set to the exact component name (including variant). DO NOT create primitive elements when a component exists!
+
+For buttons with variants (e.g., "Button" with variants like "Style=Primary" or "Style=Outline"):
+- Use componentRef.name like "Style=Primary" for the primary action
+- Use componentRef.name like "Style=Outline" or "Style=Secondary" for secondary actions
 ` : ""}
 ${request.screenAnalysis ? `
 ## Patterns Found in Existing Screens (MATCH THESE!)
@@ -628,46 +646,60 @@ async function callGeminiAPI(
     }
   }
 
-  const response = await fetch(`${GEMINI_API_URL}/${GEMINI_MODEL}:generateContent?key=${apiKey}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      system_instruction: {
-        parts: [{ text: systemPrompt }],
+  // Retry loop with exponential backoff for rate limits
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const delayMs = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+      console.log(`[edgy] Gemini rate limited, retrying in ${delayMs}ms (attempt ${attempt}/${MAX_RETRIES})`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+
+    const response = await fetch(`${GEMINI_API_URL}/${GEMINI_MODEL}:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
-      contents: [
-        {
-          parts,
+      body: JSON.stringify({
+        system_instruction: {
+          parts: [{ text: systemPrompt }],
         },
-      ],
-      generationConfig: {
-        maxOutputTokens: MAX_TOKENS,
-        temperature: 0.3,
-      },
-    }),
-  });
+        contents: [
+          {
+            parts,
+          },
+        ],
+        generationConfig: {
+          maxOutputTokens: MAX_TOKENS,
+          temperature: 0.3,
+        },
+      }),
+    });
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    if (response.status === 400 && errorBody.includes("API_KEY_INVALID")) {
-      throw new Error("Invalid API key. Please check your Gemini API key in settings.");
+    if (!response.ok) {
+      const errorBody = await response.text();
+      if (response.status === 400 && errorBody.includes("API_KEY_INVALID")) {
+        throw new Error("Invalid API key. Please check your Gemini API key in settings.");
+      }
+      if (response.status === 429) {
+        lastError = new Error("Rate limited by Gemini API");
+        continue; // Retry
+      }
+      throw new Error(`Gemini API error (${response.status}): ${errorBody}`);
     }
-    if (response.status === 429) {
-      throw new Error("Rate limited by Gemini API. Please try again in a moment.");
+
+    const data = await response.json();
+
+    const textContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!textContent) {
+      throw new Error("No text content in Gemini API response");
     }
-    throw new Error(`Gemini API error (${response.status}): ${errorBody}`);
+
+    return textContent;
   }
 
-  const data = await response.json();
-
-  const textContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!textContent) {
-    throw new Error("No text content in Gemini API response");
-  }
-
-  return textContent;
+  // All retries exhausted
+  throw new Error(`Gemini API rate limited after ${MAX_RETRIES} retries. Please try again later.`);
 }
 
 // --- Response Parsing ---

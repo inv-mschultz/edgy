@@ -1,0 +1,273 @@
+[
+  {
+    "url": "https://www.nngroup.com/articles/empty-state-interface-design/",
+    "title": "NNG: Designing Empty States in Complex Applications",
+    "category": "UX Research",
+    "publisher": "Nielsen Norman Group",
+    "scrapedAt": "2026-02-09T13:18:54.181Z",
+    "status": "success",
+    "contentLength": 13569
+  },
+  {
+    "url": "https://carbondesignsystem.com/patterns/empty-states-pattern/",
+    "title": "Carbon Design System: Empty States Pattern",
+    "category": "Design System",
+    "publisher": "IBM Carbon",
+    "scrapedAt": "2026-02-09T13:18:55.584Z",
+    "status": "success",
+    "contentLength": 21027
+  },
+  {
+    "url": "https://www.nngroup.com/articles/skeleton-screens/",
+    "title": "NNG: Skeleton Screens 101",
+    "category": "UX Research",
+    "publisher": "Nielsen Norman Group",
+    "scrapedAt": "2026-02-09T13:18:57.655Z",
+    "status": "success",
+    "contentLength": 10872
+  },
+  {
+    "url": "https://carbondesignsystem.com/patterns/loading-pattern/",
+    "title": "Carbon Design System: Loading Pattern",
+    "category": "Design System",
+    "publisher": "IBM Carbon",
+    "scrapedAt": "2026-02-09T13:18:58.966Z",
+    "status": "success",
+    "contentLength": 6129
+  },
+  {
+    "url": "https://www.nngroup.com/articles/error-message-guidelines/",
+    "title": "NNG: Error Message Guidelines",
+    "category": "UX Research",
+    "publisher": "Nielsen Norman Group",
+    "scrapedAt": "2026-02-09T13:19:00.925Z",
+    "status": "success",
+    "contentLength": 13150
+  },
+  {
+    "url": "https://www.nngroup.com/articles/errors-forms-design-guidelines/",
+    "title": "NNG: 10 Guidelines for Reporting Errors in Forms",
+    "category": "UX Research",
+    "publisher": "Nielsen Norman Group",
+    "scrapedAt": "2026-02-09T13:19:03.020Z",
+    "status": "success",
+    "contentLength": 11747
+  },
+  {
+    "url": "https://www.nngroup.com/articles/hostile-error-messages/",
+    "title": "NNG: Hostile Patterns in Error Messages",
+    "category": "UX Research",
+    "publisher": "Nielsen Norman Group",
+    "scrapedAt": "2026-02-09T13:19:05.126Z",
+    "status": "success",
+    "contentLength": 13632
+  },
+  {
+    "url": "https://baymard.com/blog/current-state-of-checkout-ux",
+    "title": "Baymard: Checkout UX Best Practices",
+    "category": "E-commerce UX",
+    "publisher": "Baymard Institute",
+    "scrapedAt": "2026-02-09T13:19:06.220Z",
+    "status": "failed",
+    "error": "HTTP 520: <none>",
+    "contentLength": 0
+  },
+  {
+    "url": "https://baymard.com/blog/collections/cart-and-checkout",
+    "title": "Baymard: Cart & Checkout UX Articles",
+    "category": "E-commerce UX",
+    "publisher": "Baymard Institute",
+    "scrapedAt": "2026-02-09T13:19:07.398Z",
+    "status": "success",
+    "contentLength": 14482
+  },
+  {
+    "url": "https://www.nngroup.com/articles/edge-cases/",
+    "title": "NNG: The Edge Cases that Break Hearts (And Products)",
+    "category": "UX Research",
+    "publisher": "Nielsen Norman Group",
+    "scrapedAt": "2026-02-09T13:19:09.407Z",
+    "status": "success",
+    "contentLength": 16642
+  },
+  {
+    "url": "https://baymard.com/blog/checkout-flow-average-form-fields",
+    "title": "Baymard: Checkout Form Fields",
+    "category": "E-commerce UX",
+    "publisher": "Baymard Institute",
+    "scrapedAt": "2026-02-09T13:19:10.555Z",
+    "status": "success",
+    "contentLength": 23100
+  },
+  {
+    "url": "https://www.nngroup.com/articles/ten-usability-heuristics/",
+    "title": "NNG: 10 Usability Heuristics",
+    "category": "UX Research",
+    "publisher": "Nielsen Norman Group",
+    "scrapedAt": "2026-02-09T13:19:12.587Z",
+    "status": "success",
+    "contentLength": 15814
+  },
+  {
+    "url": "https://baymard.com/blog/mobile-checkout",
+    "title": "Baymard: Mobile Checkout",
+    "category": "E-commerce UX",
+    "publisher": "Baymard Institute",
+    "scrapedAt": "2026-02-09T13:19:13.741Z",
+    "status": "success",
+    "contentLength": 15174
+  },
+  {
+    "url": "https://www.w3.org/WAI/standards-guidelines/wcag/",
+    "title": "WCAG 2.2 Overview",
+    "category": "Accessibility",
+    "publisher": "W3C/WCAG",
+    "scrapedAt": "2026-02-09T13:19:15.194Z",
+    "status": "success",
+    "contentLength": 9199
+  },
+  {
+    "url": "https://webaim.org/standards/wcag/checklist",
+    "title": "WebAIM: WCAG 2 Checklist",
+    "category": "Accessibility",
+    "publisher": "W3C/WCAG",
+    "scrapedAt": "2026-02-09T13:19:16.806Z",
+    "status": "success",
+    "contentLength": 24562
+  },
+  {
+    "url": "https://dubbot.com/dubblog/2025/designing-destructive-buttons-balancing-function-and-accessibility.html",
+    "title": "DubBot: Designing Destructive Buttons",
+    "category": "Accessibility",
+    "publisher": "DubBot",
+    "scrapedAt": "2026-02-09T13:19:18.684Z",
+    "status": "success",
+    "contentLength": 6034
+  },
+  {
+    "url": "https://nngroup.com/articles/ten-usability-heuristics/",
+    "title": "10 Usability Heuristics for User Interface Design",
+    "category": "UX Research",
+    "publisher": "Nielsen Norman Group",
+    "scrapedAt": "2026-02-09T13:19:20.342Z",
+    "status": "success",
+    "contentLength": 15814
+  },
+  {
+    "url": "https://nngroup.com/articles/edge-cases/",
+    "title": "The Edge Cases that Break Hearts (And Products)",
+    "category": "UX Research",
+    "publisher": "Nielsen Norman Group",
+    "scrapedAt": "2026-02-09T13:19:22.719Z",
+    "status": "success",
+    "contentLength": 16642
+  },
+  {
+    "url": "https://nngroup.com/articles/empty-state-interface-design/",
+    "title": "Designing Empty States in Complex Applications: 3 Guidelines",
+    "category": "UX Research",
+    "publisher": "Nielsen Norman Group",
+    "scrapedAt": "2026-02-09T13:19:25.101Z",
+    "status": "success",
+    "contentLength": 13569
+  },
+  {
+    "url": "https://nngroup.com/articles/skeleton-screens/",
+    "title": "Skeleton Screens 101",
+    "category": "UX Research",
+    "publisher": "Nielsen Norman Group",
+    "scrapedAt": "2026-02-09T13:19:28.266Z",
+    "status": "success",
+    "contentLength": 10872
+  },
+  {
+    "url": "https://nngroup.com/articles/error-message-guidelines/",
+    "title": "Error Message Guidelines",
+    "category": "UX Research",
+    "publisher": "Nielsen Norman Group",
+    "scrapedAt": "2026-02-09T13:19:29.716Z",
+    "status": "success",
+    "contentLength": 13150
+  },
+  {
+    "url": "https://nngroup.com/articles/errors-forms-design-guidelines/",
+    "title": "10 Design Guidelines for Reporting Errors in Forms",
+    "category": "UX Research",
+    "publisher": "Nielsen Norman Group",
+    "scrapedAt": "2026-02-09T13:19:32.215Z",
+    "status": "success",
+    "contentLength": 11747
+  },
+  {
+    "url": "https://nngroup.com/articles/hostile-error-messages/",
+    "title": "Hostile Patterns in Error Messages",
+    "category": "UX Research",
+    "publisher": "Nielsen Norman Group",
+    "scrapedAt": "2026-02-09T13:19:34.648Z",
+    "status": "success",
+    "contentLength": 13632
+  },
+  {
+    "url": "https://nngroup.com/articles/indicators-validations-notifications/",
+    "title": "Indicators, Validations, and Notifications",
+    "category": "UX Research",
+    "publisher": "Nielsen Norman Group",
+    "scrapedAt": "2026-02-09T13:19:37.036Z",
+    "status": "success",
+    "contentLength": 17282
+  },
+  {
+    "url": "https://nngroup.com/articles/mobile-app-onboarding/",
+    "title": "Mobile-App Onboarding: Components and Techniques",
+    "category": "UX Research",
+    "publisher": "Nielsen Norman Group",
+    "scrapedAt": "2026-02-09T13:19:39.464Z",
+    "status": "success",
+    "contentLength": 18300
+  },
+  {
+    "url": "https://nngroup.com/articles/onboarding-tutorials/",
+    "title": "Onboarding Tutorials vs. Contextual Help",
+    "category": "UX Research",
+    "publisher": "Nielsen Norman Group",
+    "scrapedAt": "2026-02-09T13:19:41.940Z",
+    "status": "success",
+    "contentLength": 13271
+  },
+  {
+    "url": "https://nngroup.com/topic/interaction-design/",
+    "title": "Disabled Buttons (Interaction Design topic)",
+    "category": "UX Research",
+    "publisher": "Nielsen Norman Group",
+    "scrapedAt": "2026-02-09T13:19:43.780Z",
+    "status": "success",
+    "contentLength": 8616
+  },
+  {
+    "url": "https://baymard.com/research/checkout-usability",
+    "title": "E-Commerce Checkout Usability Research",
+    "category": "E-commerce UX",
+    "publisher": "Baymard Institute",
+    "scrapedAt": "2026-02-09T13:19:44.971Z",
+    "status": "success",
+    "contentLength": 30191
+  },
+  {
+    "url": "https://w3.org/WAI/standards-guidelines/wcag/",
+    "title": "WCAG 2.2 Overview",
+    "category": "Accessibility",
+    "publisher": "W3C/WCAG",
+    "scrapedAt": "2026-02-09T13:19:46.375Z",
+    "status": "success",
+    "contentLength": 9199
+  },
+  {
+    "url": "https://w3.org/TR/WCAG21/",
+    "title": "WCAG 2.1 Specification",
+    "category": "Accessibility",
+    "publisher": "W3C/WCAG",
+    "scrapedAt": "2026-02-09T13:19:47.499Z",
+    "status": "success",
+    "contentLength": 50000
+  }
+]

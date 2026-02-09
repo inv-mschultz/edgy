@@ -49,13 +49,13 @@ export function Info() {
         </div>
         <div className="flex flex-col gap-2">
           {EDGE_CASE_CATEGORIES.map((category) => (
-            <div key={category.name} className="rounded-lg border p-3">
+            <div key={category.name} className="rounded-lg p-3" style={{ backgroundColor: '#FFF8E7' }}>
               <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary font-medium">
+                <span className="px-2 py-0.5 text-xs rounded-full font-medium" style={{ backgroundColor: '#4A1A6B', color: 'white' }}>
                   {category.name}
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground mt-1.5">
+              <p className="text-sm text-muted-foreground mt-1.5">
                 {category.description}
               </p>
             </div>
