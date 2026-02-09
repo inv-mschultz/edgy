@@ -47,7 +47,7 @@ export function loadMetadata(): SourceMetadata[] {
 
   try {
     const content = readFileSync(metadataPath, "utf-8");
-    metadataCache = JSON.parse(content);
+    metadataCache = JSON.parse(content) as SourceMetadata[];
     return metadataCache;
   } catch (error) {
     console.error("[enriched-knowledge] Error loading metadata:", error);
@@ -69,7 +69,7 @@ export function loadContentIndex(): EnrichedContent[] {
 
   try {
     const content = readFileSync(indexPath, "utf-8");
-    contentIndexCache = JSON.parse(content);
+    contentIndexCache = JSON.parse(content) as EnrichedContent[];
     return contentIndexCache;
   } catch (error) {
     console.error("[enriched-knowledge] Error loading content index:", error);

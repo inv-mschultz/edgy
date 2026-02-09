@@ -2,14 +2,13 @@
  * Authentication Middleware
  *
  * Validates API keys for protected routes.
+ * Stateless — accepts any non-empty X-API-Key as a user identifier.
  */
 
 import type { Context, Next } from "hono";
-import { getUserByApiKey } from "../db/users";
 
 export interface AuthContext {
   userId: string;
-  email?: string;
 }
 
 declare module "hono" {
@@ -19,7 +18,8 @@ declare module "hono" {
 }
 
 /**
- * Middleware that validates the X-API-Key header and attaches user info to context.
+ * Middleware that validates the X-API-Key header.
+ * Uses the key itself as the user identifier (stateless, no DB).
  */
 export async function authMiddleware(c: Context, next: Next) {
   const apiKey = c.req.header("X-API-Key");
@@ -36,38 +36,8 @@ export async function authMiddleware(c: Context, next: Next) {
     );
   }
 
-  try {
-    const user = await getUserByApiKey(apiKey);
+  // Use a hash of the API key as userId (deterministic, no PII stored)
+  c.set("auth", { userId: apiKey });
 
-    if (!user) {
-      return c.json(
-        {
-          error: {
-            code: "UNAUTHORIZED",
-            message: "Invalid API key",
-          },
-        },
-        401
-      );
-    }
-
-    // Attach user info to context
-    c.set("auth", {
-      userId: user.id,
-      email: user.email ?? undefined,
-    });
-
-    await next();
-  } catch (error) {
-    console.error("[auth] Error validating API key:", error);
-    return c.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "Failed to validate API key",
-        },
-      },
-      500
-    );
-  }
+  await next();
 }

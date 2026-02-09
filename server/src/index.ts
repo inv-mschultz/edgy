@@ -1,8 +1,8 @@
 /**
  * Edgy Server - Main Entry Point
  *
- * Hono-based server that handles analysis, generation, and deployment
- * for the Edgy Figma plugin.
+ * Stateless Hono API that handles analysis for the Edgy Figma plugin.
+ * No database required — results streamed via SSE.
  */
 
 import { Hono } from "hono";
@@ -11,9 +11,6 @@ import { logger } from "hono/logger";
 import { handle } from "hono/vercel";
 
 import { analyzeRoutes } from "./routes/analyze";
-import { deployRoutes } from "./routes/deploy";
-import { credentialsRoutes } from "./routes/credentials";
-import { jobsRoutes } from "./routes/jobs";
 import { authMiddleware } from "./middleware/auth";
 
 // Create Hono app
@@ -38,15 +35,9 @@ app.get("/health", (c) => {
 
 // Protected routes
 app.use("/analyze/*", authMiddleware);
-app.use("/deploy/*", authMiddleware);
-app.use("/credentials/*", authMiddleware);
-app.use("/jobs/*", authMiddleware);
 
 // Mount routes
 app.route("/analyze", analyzeRoutes);
-app.route("/deploy", deployRoutes);
-app.route("/credentials", credentialsRoutes);
-app.route("/jobs", jobsRoutes);
 
 // Error handling
 app.onError((err, c) => {

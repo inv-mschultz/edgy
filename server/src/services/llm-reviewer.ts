@@ -175,7 +175,7 @@ Respond with a JSON object (no markdown code fences, just raw JSON):
 ## Important Rules
 - **NEVER use action "remove" or "modify" — only "keep"**
 - Heuristic findings are deterministic and locked. Do not second-guess them.
-- You MAY add new findings via `additional_findings` — these are clearly labeled as AI suggestions
+- You MAY add new findings via additional_findings — these are clearly labeled as AI suggestions
 - Only add findings about things **visually evident or missing** from the design
 - Be VERY concise — keep descriptions under 100 characters
 - Skip flow_insights and suggested_flows unless truly valuable
