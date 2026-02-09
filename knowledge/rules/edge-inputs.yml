@@ -17,6 +17,18 @@ rules:
         - Input
       layer_name_patterns:
         - "(?i)(bio|description|comment|message|note|textarea|long.?text)"
+    exclude:
+      parent_name_patterns: ["(?i)(nav|header|footer|sidebar|menu|toolbar)"]
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library)"]
+    confidence_signals:
+      name_match: 0.5
+      component_match: 0.3
+      visual_match: 0.2
+      threshold: 0.5
+    finding_template:
+      title: "No character limit shown for {{element_name}} input"
+      description: "This text input has no visible character counter or limit. Users may hit unexpected truncation on submission."
+      recommendation: "Add a character counter showing current/max length so users know the limit before they exceed it."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(counter|count|limit|max|character|remaining|\\d+\\/\\d+|chars)"]
@@ -38,6 +50,18 @@ rules:
     triggers:
       layer_name_patterns:
         - "(?i)(name|title|label|heading|username|email|url|description)"
+    exclude:
+      parent_name_patterns: ["(?i)(nav|header|footer|sidebar|menu|toolbar|breadcrumb)"]
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library)"]
+    confidence_signals:
+      name_match: 0.4
+      component_match: 0.2
+      visual_match: 0.4
+      threshold: 0.5
+    finding_template:
+      title: "Text overflow not handled for {{element_name}}"
+      description: "This displayed text has no visible truncation or overflow handling. Very long content may break the layout."
+      recommendation: "Add text truncation with ellipsis and a tooltip showing the full value on hover."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(truncat|ellipsis|overflow|wrap|tooltip)"]
@@ -63,6 +87,18 @@ rules:
         - "(?i)(phone|tel|card.?number|credit.?card|expir|cvv|cvc|zip|postal|date|ssn|iban)"
       component_names:
         - Input
+    exclude:
+      parent_name_patterns: ["(?i)(nav|header|footer|sidebar|menu|toolbar)"]
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library)"]
+    confidence_signals:
+      name_match: 0.5
+      component_match: 0.3
+      visual_match: 0.2
+      threshold: 0.4
+    finding_template:
+      title: "No format mask for {{element_name}} input"
+      description: "This structured input has no visible masking or format hint. Users must guess the expected format."
+      recommendation: "Add input masking that auto-formats values as the user types (e.g. card numbers with spaces, phone with dashes)."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(mask|format|placeholder|hint|pattern|\\+1|###|XX\\/XX)"]
@@ -91,6 +127,17 @@ rules:
         - "(?i)(name|first.?name|last.?name|username|display.?name|full.?name)"
       component_names:
         - Input
+    exclude:
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library)"]
+    confidence_signals:
+      name_match: 0.5
+      component_match: 0.3
+      visual_match: 0.2
+      threshold: 0.5
+    finding_template:
+      title: "{{element_name}} input may not handle special characters"
+      description: "This name/text field may reject valid characters like apostrophes, accented letters, or Unicode. Users with non-ASCII names will be blocked."
+      recommendation: "Ensure the field accepts apostrophes, hyphens, accented letters, and Unicode without restrictive ASCII-only validation."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(i18n|unicode|special|international|locale|accent)"]

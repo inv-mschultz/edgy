@@ -15,6 +15,17 @@ rules:
       pattern_types:
         - list
         - data-display
+    exclude:
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library)"]
+    confidence_signals:
+      name_match: 0.4
+      component_match: 0.3
+      visual_match: 0.3
+      threshold: 0.4
+    finding_template:
+      title: "No loading state for {{element_name}} content"
+      description: "This data-dependent screen has no visible loading skeleton or spinner. Users will see a blank area during fetch."
+      recommendation: "Add a loading skeleton that mimics the content layout for better perceived performance."
     expects:
       in_screen:
         - component_names: ["Skeleton"]
@@ -44,6 +55,18 @@ rules:
         - "(?i)(submit|save|send|create|update|upload|import|export|sync)"
       pattern_types:
         - button
+    exclude:
+      parent_name_patterns: ["(?i)(nav|header|footer|sidebar|menu|toolbar)"]
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library)"]
+    confidence_signals:
+      name_match: 0.5
+      component_match: 0.3
+      visual_match: 0.2
+      threshold: 0.4
+    finding_template:
+      title: "No loading state for \"{{element_text}}\" button"
+      description: "The \"{{element_text}}\" button has no loading variant. Users may double-click during async operations."
+      recommendation: "Add a loading spinner inside the button and disable it during the async operation."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(loading|spinner|progress|saving|sending)"]
@@ -74,6 +97,17 @@ rules:
         - list
       layer_name_patterns:
         - "(?i)(detail|profile|dashboard|feed|inbox|timeline|activity)"
+    exclude:
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library)"]
+    confidence_signals:
+      name_match: 0.4
+      component_match: 0.3
+      visual_match: 0.3
+      threshold: 0.5
+    finding_template:
+      title: "No initial loading state for {{element_name}} page"
+      description: "This page fetches data on mount but has no loading skeleton. Users will see an empty page briefly before content appears."
+      recommendation: "Add skeleton placeholders matching the content layout to display during the initial data fetch."
     expects:
       in_screen:
         - component_names: ["Skeleton", "Spinner"]
@@ -100,6 +134,17 @@ rules:
     triggers:
       layer_name_patterns:
         - "(?i)(pay|payment|checkout|purchase|order|buy.?now|place.?order|complete.?order)"
+    exclude:
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library|order.?history|past.?orders)"]
+    confidence_signals:
+      name_match: 0.6
+      component_match: 0.2
+      visual_match: 0.2
+      threshold: 0.3
+    finding_template:
+      title: "No processing state for {{flow_context}} payment"
+      description: "This payment flow has no visible processing state. Users will see no feedback during a high-anxiety moment."
+      recommendation: "Add a processing overlay with a progress indicator, a 'do not close' warning, and a fallback path to check order status."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(processing|completing|please.?wait|do.?not.?close|finalizing)"]

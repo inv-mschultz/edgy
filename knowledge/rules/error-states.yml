@@ -20,6 +20,18 @@ rules:
         - DatePicker
         - RadioGroup
         - Checkbox
+    exclude:
+      parent_name_patterns: ["(?i)(nav|header|footer|sidebar|menu|toolbar|breadcrumb)"]
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library)"]
+    confidence_signals:
+      name_match: 0.4
+      component_match: 0.4
+      visual_match: 0.2
+      threshold: 0.5
+    finding_template:
+      title: "Missing error state for {{element_name}} form field"
+      description: "The {{element_name}} field has no visible error variant. Users who fail validation will see no inline feedback."
+      recommendation: "Add an error variant with red border, error icon, and descriptive message below the field."
     expects:
       in_screen:
         - component_names: ["Input", "Textarea", "Select"]
@@ -55,6 +67,18 @@ rules:
         - "(?i)(submit|save|send|create|update|confirm|sign.?in|log.?in|register)"
       pattern_types:
         - button
+    exclude:
+      parent_name_patterns: ["(?i)(nav|header|footer|toolbar|pagination)"]
+      screen_name_patterns: ["(?i)(styleguide|component.?library)"]
+    confidence_signals:
+      name_match: 0.5
+      component_match: 0.3
+      visual_match: 0.2
+      threshold: 0.5
+    finding_template:
+      title: "No error feedback for \"{{element_text}}\" submission"
+      description: "The \"{{element_text}}\" button has no associated error state. Users will see no feedback if submission fails."
+      recommendation: "Add an inline alert or toast notification showing the error with a clear recovery action."
     expects:
       in_screen:
         - component_names: ["Alert", "Toast", "Sonner"]
@@ -85,6 +109,15 @@ rules:
     triggers:
       pattern_types:
         - search
+    confidence_signals:
+      name_match: 0.5
+      component_match: 0.3
+      visual_match: 0.2
+      threshold: 0.4
+    finding_template:
+      title: "Missing \"no results\" state for search"
+      description: "The search/filter has no visible empty results state. Users whose queries return nothing will see no guidance."
+      recommendation: "Add a 'no results' state with a helpful message and suggestions to broaden search criteria."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(no.?results|not.?found|empty|zero|nothing)"]
@@ -114,6 +147,17 @@ rules:
         - form
       layer_name_patterns:
         - "(?i)(checkout|payment|register|sign.?up|profile|order)"
+    exclude:
+      screen_name_patterns: ["(?i)(success|confirmation|thank|receipt)"]
+    confidence_signals:
+      name_match: 0.4
+      component_match: 0.3
+      visual_match: 0.3
+      threshold: 0.5
+    finding_template:
+      title: "Form data may not persist after submission error"
+      description: "This {{flow_context}} form has no visible error-with-preserved-data state. Users may lose entered data on failure."
+      recommendation: "Design an error state that shows validation messages while keeping all user-entered data intact."
     expects:
       in_flow:
         - layer_name_patterns: ["(?i)(error.?state|validation|retry|error.?form|preserved|retained)"]
@@ -145,6 +189,17 @@ rules:
         - Select
       layer_name_patterns:
         - "(?i)(error|invalid|destructive|warning|alert)"
+    exclude:
+      parent_name_patterns: ["(?i)(nav|header|footer|sidebar)"]
+    confidence_signals:
+      name_match: 0.4
+      component_match: 0.3
+      visual_match: 0.3
+      threshold: 0.5
+    finding_template:
+      title: "Error state for {{element_name}} may rely on colour alone"
+      description: "Error indicators should use colour + icon + text (WCAG 1.4.1). Colour-blind users may miss colour-only errors."
+      recommendation: "Add an error icon and descriptive text alongside the colour change for accessibility compliance."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(error.?icon|warning.?icon|alert.?icon|exclamation|error.?message|validation.?message|helper.?text|form.?message|hint)"]
@@ -172,6 +227,17 @@ rules:
     triggers:
       layer_name_patterns:
         - "(?i)(password|new.?password|create.?password|change.?password|sign.?up|register)"
+    exclude:
+      screen_name_patterns: ["(?i)(login|sign.?in|forgot|reset)"]
+    confidence_signals:
+      name_match: 0.6
+      component_match: 0.2
+      visual_match: 0.2
+      threshold: 0.4
+    finding_template:
+      title: "No password strength feedback on signup"
+      description: "Password creation has no visible strength indicator. Users cannot gauge if their password meets requirements."
+      recommendation: "Add a strength meter showing specific criteria (length, special chars) that updates as the user types."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(strength|strong|weak|requirement|criteria|rule|meter)"]
@@ -199,6 +265,17 @@ rules:
     triggers:
       layer_name_patterns:
         - "(?i)(widget|chart|graph|metric|stat|kpi|analytics|report)"
+    exclude:
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library)"]
+    confidence_signals:
+      name_match: 0.5
+      component_match: 0.2
+      visual_match: 0.3
+      threshold: 0.4
+    finding_template:
+      title: "No error/retry state for {{element_name}} widget"
+      description: "This data widget has no visible error state. If the data source fails, users will see stale or blank content."
+      recommendation: "Add an error card with a clear message and retry button that re-fetches without a full page reload."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(error|fail|unavailable|retry|reload|refresh)"]

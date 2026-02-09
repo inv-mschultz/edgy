@@ -16,6 +16,18 @@ rules:
         - Badge
       layer_name_patterns:
         - "(?i)(count|badge|notification|unread|total|quantity|amount)"
+    exclude:
+      parent_name_patterns: ["(?i)(nav|header|footer|sidebar|menu|toolbar)"]
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library)"]
+    confidence_signals:
+      name_match: 0.4
+      component_match: 0.4
+      visual_match: 0.2
+      threshold: 0.5
+    finding_template:
+      title: "No boundary handling for {{element_name}} counter"
+      description: "This numeric counter has no visible handling for zero, very large (99+), or negative values."
+      recommendation: "Show how the counter behaves at zero, at a capped max value (e.g. 99+), and ensure no negative display."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(zero|empty|overflow|99\\+|max|limit)"]
@@ -39,6 +51,18 @@ rules:
         - "(?i)(pagination|paging|page.?\\d|prev|next)"
       component_names:
         - Pagination
+    exclude:
+      parent_name_patterns: ["(?i)(nav|header|footer|sidebar|menu|toolbar)"]
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library)"]
+    confidence_signals:
+      name_match: 0.5
+      component_match: 0.3
+      visual_match: 0.2
+      threshold: 0.4
+    finding_template:
+      title: "No first/last page state for {{element_name}} pagination"
+      description: "This pagination has no visible disabled state for boundary pages. Users may try to navigate past the first or last page."
+      recommendation: "Disable the 'previous' button on page 1 and the 'next' button on the last page."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(disabled|first|last|no.?more)"]
@@ -62,6 +86,17 @@ rules:
     triggers:
       layer_name_patterns:
         - "(?i)(upload|drop.?zone|file.?input|attach|import.?file|avatar|photo|image)"
+    exclude:
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library)"]
+    confidence_signals:
+      name_match: 0.5
+      component_match: 0.2
+      visual_match: 0.3
+      threshold: 0.4
+    finding_template:
+      title: "No visible constraints for {{element_name}} file upload"
+      description: "This file upload has no visible size or format limits. Users will only discover constraints after a failed upload."
+      recommendation: "Show max file size, accepted formats, and dimension limits directly in the upload area before selection."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(max.?size|file.?size|limit|mb|gb|accept|allowed|format|type)"]
@@ -88,6 +123,18 @@ rules:
     triggers:
       pattern_types:
         - list
+    exclude:
+      parent_name_patterns: ["(?i)(nav|header|footer|sidebar|menu|toolbar)"]
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library)"]
+    confidence_signals:
+      name_match: 0.4
+      component_match: 0.3
+      visual_match: 0.3
+      threshold: 0.5
+    finding_template:
+      title: "No scaling handling for {{element_name}} list"
+      description: "This list has no visible pagination or load-more pattern. Very large datasets may cause performance issues."
+      recommendation: "Add pagination or infinite scroll for large lists, and ensure a single-item state looks intentional."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(pagination|load.?more|infinite|scroll|showing|of.?\\d|page|virtual)"]
@@ -118,6 +165,18 @@ rules:
       component_names:
         - DatePicker
         - Calendar
+    exclude:
+      parent_name_patterns: ["(?i)(nav|header|footer|sidebar|menu|toolbar)"]
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library)"]
+    confidence_signals:
+      name_match: 0.5
+      component_match: 0.3
+      visual_match: 0.2
+      threshold: 0.4
+    finding_template:
+      title: "No invalid-range handling for {{element_name}} date picker"
+      description: "This date range picker has no visible constraint preventing end dates before start dates. Users may submit invalid ranges."
+      recommendation: "Disable invalid dates in the picker UI and show a clear error if an invalid range is somehow entered."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(invalid|error|constraint|disabled|min.?date|max.?date)"]

@@ -1,0 +1,48 @@
+# Distilled from Baymard Institute checkout UX research
+# Source: https://baymard.com/checkout-usability
+source: "Baymard Institute"
+topic: "Checkout & Payment UX"
+
+rules:
+  - trigger:
+      flow_type: checkout
+      screen_contains: [form-field]
+    findings:
+      - id: baymard_inline_validation
+        severity: warning
+        condition: "no error state variant on checkout form fields"
+        title: "Missing inline validation on checkout form"
+        evidence: "Baymard found that 69% of checkouts benefit from inline validation — yet 20% of major e-commerce sites still don't use it."
+        recommendation: "Add real-time validation with error messages below each field. Validate on blur, not on submit."
+
+      - id: baymard_guest_checkout
+        severity: warning
+        condition: "no guest checkout option visible"
+        title: "No guest checkout path"
+        evidence: "60% of Baymard test subjects had serious difficulty finding the guest checkout option. Forced account creation causes 34% of cart abandonments."
+        recommendation: "Make guest checkout equally prominent to sign-in. Consider progressive account creation after purchase."
+
+      - id: baymard_card_format
+        severity: info
+        condition: "credit card field has no input masking"
+        title: "Credit card field lacks auto-formatting"
+        evidence: "80% of sites don't auto-format card numbers with spaces, yet it's the #1 usability improvement for payment forms (Baymard)."
+        recommendation: "Auto-format card numbers as '4242 4242 4242 4242' with spaces every 4 digits."
+
+      - id: baymard_order_summary
+        severity: critical
+        condition: "no order summary visible on payment page"
+        title: "No order summary on payment step"
+        evidence: "Baymard: 'A persistent order summary is essential — users need to verify items, quantities, and total before committing to pay.'"
+        recommendation: "Show a persistent order summary sidebar/section with items, quantities, subtotal, tax, shipping, and total."
+
+  - trigger:
+      flow_type: checkout
+      screen_contains: [button]
+    findings:
+      - id: baymard_progress_indicator
+        severity: warning
+        condition: "no step indicator in multi-step checkout"
+        title: "Multi-step checkout has no progress indicator"
+        evidence: "Baymard: 'Linear checkout progress indicators reduce abandonment by setting expectations about how many steps remain.'"
+        recommendation: "Add a step indicator (e.g., Shipping → Payment → Review) at the top of each checkout step."

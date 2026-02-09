@@ -15,6 +15,18 @@ rules:
     triggers:
       pattern_types:
         - list
+    exclude:
+      parent_name_patterns: ["(?i)(nav|header|footer|sidebar|menu|toolbar)"]
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library)"]
+    confidence_signals:
+      name_match: 0.4
+      component_match: 0.3
+      visual_match: 0.3
+      threshold: 0.4
+    finding_template:
+      title: "No empty state for {{element_name}} list"
+      description: "This list or collection has no visible empty state. Users with zero items will see a confusing blank area."
+      recommendation: "Add an empty state card with a friendly message and a CTA to create the first item."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(empty|no.?items|no.?data|zero|nothing|get.?started|no.?results|blank.?state|placeholder)"]
@@ -42,6 +54,17 @@ rules:
         - Table
         - DataTable
         - DataGrid
+    exclude:
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library)"]
+    confidence_signals:
+      name_match: 0.4
+      component_match: 0.4
+      visual_match: 0.2
+      threshold: 0.4
+    finding_template:
+      title: "No empty state for {{element_name}} table"
+      description: "This data table has no visible empty state. Users will see empty headers with no rows and no guidance."
+      recommendation: "Add an empty row message in the table body explaining there is no data yet and how to add some."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(empty|no.?data|no.?rows|no.?results|no.?items|blank|placeholder)"]
@@ -67,6 +90,17 @@ rules:
     triggers:
       layer_name_patterns:
         - "(?i)(dashboard|analytics|overview|stats|metrics)"
+    exclude:
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library)"]
+    confidence_signals:
+      name_match: 0.5
+      component_match: 0.2
+      visual_match: 0.3
+      threshold: 0.4
+    finding_template:
+      title: "No empty/zero state for {{element_name}} dashboard"
+      description: "This dashboard has no visible empty state. New users with no data will see blank or zeroed-out widgets."
+      recommendation: "Add onboarding prompts or empty state cards for each widget guiding new users to generate data."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(empty|no.?data|getting.?started|onboard)"]

@@ -1,0 +1,291 @@
+{
+  "name": "Login Flow Test Fixture",
+  "description": "A basic authentication flow with login and signup screens",
+  "input": {
+    "analysis_id": "test-login-001",
+    "timestamp": "2025-01-01T00:00:00.000Z",
+    "file_name": "Login Flow.fig",
+    "screens": [
+      {
+        "screen_id": "screen-login",
+        "name": "Login",
+        "order": 0,
+        "width": 375,
+        "height": 812,
+        "x": 0,
+        "y": 0,
+        "node_tree": {
+          "id": "root-login",
+          "name": "Login",
+          "type": "FRAME",
+          "visible": true,
+          "x": 0,
+          "y": 0,
+          "width": 375,
+          "height": 812,
+          "children": [
+            {
+              "id": "heading-login",
+              "name": "Sign In",
+              "type": "TEXT",
+              "visible": true,
+              "x": 24,
+              "y": 120,
+              "width": 327,
+              "height": 40,
+              "textContent": "Sign In",
+              "children": [],
+              "textStyle": {
+                "fontFamily": "Inter",
+                "fontSize": 32,
+                "fontWeight": 700,
+                "lineHeight": 40,
+                "letterSpacing": 0,
+                "textAlign": "left",
+                "textDecoration": "none",
+                "textTransform": "none",
+                "color": { "r": 0.09, "g": 0.09, "b": 0.09, "a": 1 }
+              }
+            },
+            {
+              "id": "email-input",
+              "name": "Email Input",
+              "type": "INSTANCE",
+              "componentName": "Input",
+              "visible": true,
+              "x": 24,
+              "y": 200,
+              "width": 327,
+              "height": 44,
+              "children": [
+                {
+                  "id": "email-label",
+                  "name": "Email",
+                  "type": "TEXT",
+                  "visible": true,
+                  "x": 24,
+                  "y": 200,
+                  "width": 100,
+                  "height": 20,
+                  "textContent": "Email",
+                  "children": []
+                }
+              ],
+              "strokes": [{ "color": { "r": 0.9, "g": 0.9, "b": 0.9, "a": 1 }, "weight": 1, "align": "inside" }]
+            },
+            {
+              "id": "password-input",
+              "name": "Password Input",
+              "type": "INSTANCE",
+              "componentName": "Input",
+              "visible": true,
+              "x": 24,
+              "y": 268,
+              "width": 327,
+              "height": 44,
+              "children": [
+                {
+                  "id": "password-label",
+                  "name": "Password",
+                  "type": "TEXT",
+                  "visible": true,
+                  "x": 24,
+                  "y": 268,
+                  "width": 100,
+                  "height": 20,
+                  "textContent": "Password",
+                  "children": []
+                }
+              ],
+              "strokes": [{ "color": { "r": 0.9, "g": 0.9, "b": 0.9, "a": 1 }, "weight": 1, "align": "inside" }]
+            },
+            {
+              "id": "sign-in-btn",
+              "name": "Sign In Button",
+              "type": "INSTANCE",
+              "componentName": "Button",
+              "visible": true,
+              "x": 24,
+              "y": 340,
+              "width": 327,
+              "height": 44,
+              "children": [
+                {
+                  "id": "sign-in-text",
+                  "name": "Sign In",
+                  "type": "TEXT",
+                  "visible": true,
+                  "x": 140,
+                  "y": 352,
+                  "width": 80,
+                  "height": 20,
+                  "textContent": "Sign In",
+                  "children": []
+                }
+              ],
+              "fills": [{ "type": "solid", "color": { "r": 0.09, "g": 0.09, "b": 0.09, "a": 1 }, "opacity": 1 }],
+              "borderRadius": { "topLeft": 8, "topRight": 8, "bottomRight": 8, "bottomLeft": 8 }
+            },
+            {
+              "id": "forgot-link",
+              "name": "Forgot Password",
+              "type": "TEXT",
+              "visible": true,
+              "x": 24,
+              "y": 400,
+              "width": 200,
+              "height": 20,
+              "textContent": "Forgot password?",
+              "children": [],
+              "textStyle": {
+                "fontFamily": "Inter",
+                "fontSize": 14,
+                "fontWeight": 400,
+                "lineHeight": 20,
+                "letterSpacing": 0,
+                "textAlign": "left",
+                "textDecoration": "underline",
+                "textTransform": "none",
+                "color": { "r": 0.2, "g": 0.4, "b": 0.8, "a": 1 }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "screen_id": "screen-signup",
+        "name": "Sign Up",
+        "order": 1,
+        "width": 375,
+        "height": 812,
+        "x": 425,
+        "y": 0,
+        "node_tree": {
+          "id": "root-signup",
+          "name": "Sign Up",
+          "type": "FRAME",
+          "visible": true,
+          "x": 425,
+          "y": 0,
+          "width": 375,
+          "height": 812,
+          "children": [
+            {
+              "id": "heading-signup",
+              "name": "Create Account",
+              "type": "TEXT",
+              "visible": true,
+              "x": 449,
+              "y": 120,
+              "width": 327,
+              "height": 40,
+              "textContent": "Create Account",
+              "children": []
+            },
+            {
+              "id": "name-input",
+              "name": "Name Input",
+              "type": "INSTANCE",
+              "componentName": "Input",
+              "visible": true,
+              "x": 449,
+              "y": 200,
+              "width": 327,
+              "height": 44,
+              "children": [
+                {
+                  "id": "name-label",
+                  "name": "Full Name",
+                  "type": "TEXT",
+                  "visible": true,
+                  "x": 449,
+                  "y": 200,
+                  "width": 100,
+                  "height": 20,
+                  "textContent": "Full Name",
+                  "children": []
+                }
+              ],
+              "strokes": [{ "color": { "r": 0.9, "g": 0.9, "b": 0.9, "a": 1 }, "weight": 1, "align": "inside" }]
+            },
+            {
+              "id": "signup-email",
+              "name": "Email Input",
+              "type": "INSTANCE",
+              "componentName": "Input",
+              "visible": true,
+              "x": 449,
+              "y": 268,
+              "width": 327,
+              "height": 44,
+              "children": [],
+              "strokes": [{ "color": { "r": 0.9, "g": 0.9, "b": 0.9, "a": 1 }, "weight": 1, "align": "inside" }]
+            },
+            {
+              "id": "signup-password",
+              "name": "Password Input",
+              "type": "INSTANCE",
+              "componentName": "Input",
+              "visible": true,
+              "x": 449,
+              "y": 336,
+              "width": 327,
+              "height": 44,
+              "children": [
+                {
+                  "id": "password-signup-label",
+                  "name": "Password",
+                  "type": "TEXT",
+                  "visible": true,
+                  "x": 449,
+                  "y": 336,
+                  "width": 100,
+                  "height": 20,
+                  "textContent": "Password",
+                  "children": []
+                }
+              ],
+              "strokes": [{ "color": { "r": 0.9, "g": 0.9, "b": 0.9, "a": 1 }, "weight": 1, "align": "inside" }]
+            },
+            {
+              "id": "register-btn",
+              "name": "Register Button",
+              "type": "INSTANCE",
+              "componentName": "Button",
+              "visible": true,
+              "x": 449,
+              "y": 412,
+              "width": 327,
+              "height": 44,
+              "children": [
+                {
+                  "id": "register-text",
+                  "name": "Create Account",
+                  "type": "TEXT",
+                  "visible": true,
+                  "x": 520,
+                  "y": 424,
+                  "width": 120,
+                  "height": 20,
+                  "textContent": "Create Account",
+                  "children": []
+                }
+              ],
+              "fills": [{ "type": "solid", "color": { "r": 0.09, "g": 0.09, "b": 0.09, "a": 1 }, "opacity": 1 }],
+              "borderRadius": { "topLeft": 8, "topRight": 8, "bottomRight": 8, "bottomLeft": 8 }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "expected_heuristic_findings": {
+    "min_total_findings": 3,
+    "required_rule_ids": [
+      "form-field-errors",
+      "submit-error-feedback"
+    ],
+    "required_flow_types": ["authentication"],
+    "required_missing_screens": ["forgot_password_screen"]
+  }
+}

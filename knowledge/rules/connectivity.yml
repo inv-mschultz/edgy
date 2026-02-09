@@ -6,24 +6,30 @@ description: >
 rules:
   - id: no-offline-indicator
     name: No offline/connectivity indicator
-    severity: warning
+    severity: info
     annotation_target: screen
     description: >
-      Screens that fetch or submit data should communicate when the
-      device is offline or experiencing connectivity issues.
+      Screens that explicitly sync, stream, or rely on real-time server
+      connections should communicate when the device is offline.
     triggers:
-      pattern_types:
-        - data-display
-        - list
       layer_name_patterns:
-        - "(?i)(feed|data|api|fetch|load|dashboard|timeline|stream|sync|refresh)"
+        - "(?i)(sync|real.?time|live.?feed|stream|websocket|chat|messaging|collaboration|video.?call|vpn|connection.?status)"
+    exclude:
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library)"]
+    confidence_signals:
+      name_match: 0.5
+      component_match: 0.2
+      visual_match: 0.3
+      threshold: 0.5
+    finding_template:
+      title: "No offline indicator for {{element_name}} screen"
+      description: "This real-time or sync-dependent screen has no connectivity indicator. Users will see no feedback when the network drops."
+      recommendation: "Add a connectivity banner or overlay that appears when offline, with a retry option."
     expects:
       in_screen:
-        - layer_name_patterns: ["(?i)(offline|no.?connection|network|retry|reconnect|error.?state|connection.?lost|no.?internet|unavailable)"]
-        - with_visual_cues: ["error", "warning"]
+        - layer_name_patterns: ["(?i)(offline|no.?connection|network|retry|reconnect|connection.?lost|no.?internet|unavailable)"]
       in_flow:
         - layer_name_patterns: ["(?i)(offline|no.?connection|network.?error|connection.?lost|no.?internet)"]
-        - with_visual_cues: ["error"]
     recommendation:
       message: >
         Add a connectivity error state — a banner or overlay that appears
@@ -45,6 +51,17 @@ rules:
     triggers:
       layer_name_patterns:
         - "(?i)(upload|import|export|generate|process|sync)"
+    exclude:
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library)"]
+    confidence_signals:
+      name_match: 0.4
+      component_match: 0.2
+      visual_match: 0.4
+      threshold: 0.5
+    finding_template:
+      title: "No timeout handling for {{element_name}} operation"
+      description: "This long-running operation has no timeout state. Users will see no feedback if the request stalls or takes too long."
+      recommendation: "Add a timeout message with options to retry or cancel when the operation exceeds expected duration."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(timeout|slow|taking.?long|retry|cancel)"]
@@ -76,6 +93,17 @@ rules:
         - form
       layer_name_patterns:
         - "(?i)(checkout|application|registration|onboarding|wizard|multi.?step|survey|booking)"
+    exclude:
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library|login|sign.?in)"]
+    confidence_signals:
+      name_match: 0.4
+      component_match: 0.2
+      visual_match: 0.4
+      threshold: 0.5
+    finding_template:
+      title: "No auto-save for {{element_name}} form"
+      description: "This multi-step or long form has no auto-save. Users who lose connectivity or accidentally close the tab will lose all progress."
+      recommendation: "Persist form progress to local storage and show a 'draft saved' indicator for user reassurance."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(auto.?save|saved|draft|persist|resume|recover)"]
@@ -104,6 +132,17 @@ rules:
     triggers:
       layer_name_patterns:
         - "(?i)(dashboard|analytics|monitor|live|real.?time|feed|status|metric|report)"
+    exclude:
+      screen_name_patterns: ["(?i)(styleguide|design.?system|component.?library)"]
+    confidence_signals:
+      name_match: 0.4
+      component_match: 0.2
+      visual_match: 0.4
+      threshold: 0.5
+    finding_template:
+      title: "No freshness indicator for {{element_name}} data"
+      description: "This real-time data display has no 'last updated' timestamp. Users cannot tell if they are viewing current or stale information."
+      recommendation: "Add a 'last updated' timestamp and a manual refresh button, with a stale-data warning when data is old."
     expects:
       in_screen:
         - layer_name_patterns: ["(?i)(last.?updated|refreshed|ago|timestamp|stale|live|as.?of)"]

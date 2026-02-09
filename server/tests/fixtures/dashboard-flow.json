@@ -1,0 +1,228 @@
+{
+  "name": "Dashboard Test Fixture",
+  "description": "A dashboard with widgets, list, and search — tests empty states, loading, and data display rules",
+  "input": {
+    "analysis_id": "test-dashboard-001",
+    "timestamp": "2025-01-01T00:00:00.000Z",
+    "file_name": "Dashboard.fig",
+    "screens": [
+      {
+        "screen_id": "screen-dashboard",
+        "name": "Dashboard - Overview",
+        "order": 0,
+        "width": 1440,
+        "height": 900,
+        "x": 0,
+        "y": 0,
+        "node_tree": {
+          "id": "root-dash",
+          "name": "Dashboard - Overview",
+          "type": "FRAME",
+          "visible": true,
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "height": 900,
+          "children": [
+            {
+              "id": "sidebar",
+              "name": "Sidebar Navigation",
+              "type": "FRAME",
+              "visible": true,
+              "x": 0,
+              "y": 0,
+              "width": 240,
+              "height": 900,
+              "children": [
+                {
+                  "id": "nav-dashboard",
+                  "name": "Dashboard",
+                  "type": "TEXT",
+                  "visible": true,
+                  "x": 16,
+                  "y": 80,
+                  "width": 208,
+                  "height": 20,
+                  "textContent": "Dashboard",
+                  "children": []
+                },
+                {
+                  "id": "nav-settings",
+                  "name": "Settings",
+                  "type": "TEXT",
+                  "visible": true,
+                  "x": 16,
+                  "y": 120,
+                  "width": 208,
+                  "height": 20,
+                  "textContent": "Settings",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "metric-card-1",
+              "name": "Revenue Widget",
+              "type": "FRAME",
+              "visible": true,
+              "x": 280,
+              "y": 80,
+              "width": 300,
+              "height": 180,
+              "children": [
+                {
+                  "id": "revenue-title",
+                  "name": "Total Revenue",
+                  "type": "TEXT",
+                  "visible": true,
+                  "x": 296,
+                  "y": 96,
+                  "width": 268,
+                  "height": 20,
+                  "textContent": "Total Revenue",
+                  "children": []
+                },
+                {
+                  "id": "revenue-value",
+                  "name": "$45,231.89",
+                  "type": "TEXT",
+                  "visible": true,
+                  "x": 296,
+                  "y": 128,
+                  "width": 268,
+                  "height": 40,
+                  "textContent": "$45,231.89",
+                  "children": []
+                }
+              ],
+              "effects": [{ "type": "drop", "color": { "r": 0, "g": 0, "b": 0, "a": 0.08 }, "offsetX": 0, "offsetY": 2, "blur": 8, "spread": 0 }],
+              "borderRadius": { "topLeft": 12, "topRight": 12, "bottomRight": 12, "bottomLeft": 12 }
+            },
+            {
+              "id": "chart-widget",
+              "name": "Analytics Chart",
+              "type": "FRAME",
+              "visible": true,
+              "x": 600,
+              "y": 80,
+              "width": 520,
+              "height": 300,
+              "children": [
+                {
+                  "id": "chart-title",
+                  "name": "Monthly Analytics",
+                  "type": "TEXT",
+                  "visible": true,
+                  "x": 616,
+                  "y": 96,
+                  "width": 488,
+                  "height": 20,
+                  "textContent": "Monthly Analytics",
+                  "children": []
+                }
+              ],
+              "effects": [{ "type": "drop", "color": { "r": 0, "g": 0, "b": 0, "a": 0.08 }, "offsetX": 0, "offsetY": 2, "blur": 8, "spread": 0 }]
+            },
+            {
+              "id": "data-list",
+              "name": "Recent Activity List",
+              "type": "FRAME",
+              "visible": true,
+              "x": 280,
+              "y": 420,
+              "width": 840,
+              "height": 400,
+              "children": [
+                {
+                  "id": "list-title",
+                  "name": "Recent Activity",
+                  "type": "TEXT",
+                  "visible": true,
+                  "x": 296,
+                  "y": 436,
+                  "width": 200,
+                  "height": 20,
+                  "textContent": "Recent Activity",
+                  "children": []
+                },
+                {
+                  "id": "list-item-1",
+                  "name": "Activity Item",
+                  "type": "INSTANCE",
+                  "componentName": "ListItem",
+                  "visible": true,
+                  "x": 280,
+                  "y": 468,
+                  "width": 840,
+                  "height": 56,
+                  "children": []
+                },
+                {
+                  "id": "list-item-2",
+                  "name": "Activity Item",
+                  "type": "INSTANCE",
+                  "componentName": "ListItem",
+                  "visible": true,
+                  "x": 280,
+                  "y": 524,
+                  "width": 840,
+                  "height": 56,
+                  "children": []
+                },
+                {
+                  "id": "list-item-3",
+                  "name": "Activity Item",
+                  "type": "INSTANCE",
+                  "componentName": "ListItem",
+                  "visible": true,
+                  "x": 280,
+                  "y": 580,
+                  "width": 840,
+                  "height": 56,
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "search-bar",
+              "name": "Search Input",
+              "type": "FRAME",
+              "visible": true,
+              "x": 280,
+              "y": 24,
+              "width": 400,
+              "height": 40,
+              "children": [
+                {
+                  "id": "search-text",
+                  "name": "Search...",
+                  "type": "TEXT",
+                  "visible": true,
+                  "x": 310,
+                  "y": 34,
+                  "width": 340,
+                  "height": 20,
+                  "textContent": "Search...",
+                  "children": []
+                }
+              ],
+              "strokes": [{ "color": { "r": 0.9, "g": 0.9, "b": 0.9, "a": 1 }, "weight": 1, "align": "inside" }],
+              "borderRadius": { "topLeft": 8, "topRight": 8, "bottomRight": 8, "bottomLeft": 8 }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "expected_heuristic_findings": {
+    "min_total_findings": 3,
+    "required_rule_ids": [
+      "list-empty-state",
+      "data-loading-skeleton",
+      "widget-data-error",
+      "search-no-results"
+    ],
+    "required_flow_types": [],
+    "required_missing_screens": []
+  }
+}

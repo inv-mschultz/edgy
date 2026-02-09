@@ -1,0 +1,30 @@
+# Distilled from NNG onboarding research
+# Sources: nngroup.com/articles/mobile-app-onboarding/
+#          nngroup.com/articles/onboarding-tutorials-contextual-help/
+source: "Nielsen Norman Group"
+topic: "Onboarding & First-Run Experience"
+
+rules:
+  - trigger:
+      flow_type: onboarding
+    findings:
+      - id: nng_skip_onboarding
+        severity: warning
+        condition: "onboarding has no skip option"
+        title: "Onboarding must have a skip option"
+        evidence: "NNG: 'Always provide a way to skip onboarding. Returning users who re-install, or power users, will be frustrated by mandatory tutorials they don't need.'"
+        recommendation: "Add a prominent 'Skip' or 'Maybe later' option on every onboarding step."
+
+      - id: nng_contextual_over_upfront
+        severity: info
+        condition: "all onboarding happens upfront in a separate flow"
+        title: "Prefer contextual help over upfront tutorials"
+        evidence: "NNG: 'Contextual onboarding (tooltips, coach marks at the moment of need) outperforms upfront tutorials. Users learn better when guidance appears in context.'"
+        recommendation: "Consider replacing some upfront onboarding steps with contextual tooltips that appear when users first encounter features."
+
+      - id: nng_onboarding_progress
+        severity: warning
+        condition: "multi-step onboarding has no progress indicator"
+        title: "Onboarding needs progress indicator"
+        evidence: "NNG: 'Users need to know how many steps remain. Without a progress indicator, multi-step onboarding feels endless and increases drop-off.'"
+        recommendation: "Add dots, a step counter (e.g., '2 of 5'), or a progress bar to every onboarding step."

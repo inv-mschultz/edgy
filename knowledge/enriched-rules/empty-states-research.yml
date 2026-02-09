@@ -1,0 +1,30 @@
+# Distilled from NNG empty states guidelines & Carbon Design System
+# Sources: nngroup.com/articles/empty-state-design/
+#          carbondesignsystem.com/patterns/empty-states-pattern/
+source: "NNG + Carbon Design System"
+topic: "Empty States"
+
+rules:
+  - trigger:
+      pattern_types: [list, data-display]
+    findings:
+      - id: nng_empty_actionable
+        severity: warning
+        condition: "empty state has no call-to-action"
+        title: "Empty state is passive — needs a CTA"
+        evidence: "NNG: 'Empty states should be actionable, not just informative. Guide users to populate the empty view with a prominent, contextual CTA.'"
+        recommendation: "Add a primary action button (e.g., 'Create your first project') to the empty state, not just an explanation."
+
+      - id: nng_empty_educational
+        severity: info
+        condition: "empty state doesn't explain the feature"
+        title: "Empty state should explain the feature's value"
+        evidence: "NNG: 'First-time empty states are a key onboarding moment. Explain what this feature does and why the user should care.'"
+        recommendation: "Add a brief explanation of what this section is for and how to get started. Use illustration + heading + description + CTA."
+
+      - id: carbon_empty_types
+        severity: info
+        condition: "empty state doesn't differentiate first-use vs no-results"
+        title: "Distinguish first-use from no-results empty states"
+        evidence: "Carbon Design System: 'There are four types of empty states: first use, no results, error, and unavailable. Each needs different messaging and different CTAs.'"
+        recommendation: "Design separate empty states for: (1) first-time/new user, (2) search with no results, (3) error loading data, (4) feature unavailable."

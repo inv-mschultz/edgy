@@ -1,0 +1,33 @@
+# Distilled from NNG & dubbot destructive action research
+# Sources: nngroup.com/articles/confirmation-dialog/
+#          dubbot.com/designing-destructive-actions
+source: "NNG + DubBot"
+topic: "Destructive Actions & Confirmation Patterns"
+
+rules:
+  - trigger:
+      pattern_types: [destructive-action]
+    findings:
+      - id: nng_specific_confirmation
+        severity: warning
+        condition: "confirmation dialog uses generic 'Are you sure?' language"
+        title: "Confirmation should state the specific consequence"
+        evidence: "NNG: 'Confirmation dialogs should clearly describe what will happen and what will be lost. Generic \"Are you sure?\" dialogs train users to click through without reading.'"
+        recommendation: "State the specific consequence: 'Delete \"Project Alpha\"? This will permanently remove 47 files and cannot be undone.'"
+
+      - id: dubbot_button_hierarchy
+        severity: warning
+        condition: "destructive confirmation dialog has unclear button hierarchy"
+        title: "Destructive dialog needs clear button hierarchy"
+        evidence: "DubBot: 'The destructive action button should be visually distinct (red/destructive variant) and the cancel option should be equally accessible. Never make the destructive option the default focus.'"
+        recommendation: "Use Button(destructive) for the action and Button(outline) for cancel. Place cancel on the left, destructive on the right."
+
+  - trigger:
+      pattern_types: [form]
+    findings:
+      - id: nng_undo_over_confirm
+        severity: info
+        condition: "only confirmation, no undo option"
+        title: "Prefer undo over confirmation when possible"
+        evidence: "NNG Heuristic #3 (User Control & Freedom): 'An undo option is often better than a confirmation dialog. It lets users recover from mistakes without interrupting their flow.'"
+        recommendation: "For reversible actions, use a toast with 'Undo' button (5-10 second window) instead of a blocking confirmation dialog."

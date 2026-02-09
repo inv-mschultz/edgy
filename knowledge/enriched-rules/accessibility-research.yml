@@ -1,0 +1,40 @@
+# Distilled from WCAG 2.2 & WebAIM guidelines
+# Sources: w3.org/WAI/WCAG22/quickref/
+#          webaim.org/standards/wcag/checklist
+source: "W3C / WebAIM"
+topic: "Accessibility & WCAG Compliance"
+
+rules:
+  - trigger:
+      pattern_types: [form, form-field]
+    findings:
+      - id: wcag_error_identification
+        severity: warning
+        condition: "error states rely on colour alone"
+        title: "Error identification must not rely on colour alone (WCAG 1.4.1)"
+        evidence: "WCAG 1.4.1: 'Color is not used as the only visual means of conveying information, indicating an action, prompting a response, or distinguishing a visual element.' 8% of men have color vision deficiency."
+        recommendation: "Use colour + icon + text together for all error states. Add a warning icon and descriptive text alongside any colour change."
+
+      - id: wcag_error_suggestion
+        severity: info
+        condition: "error messages don't suggest corrections"
+        title: "Provide error correction suggestions (WCAG 3.3.3)"
+        evidence: "WCAG 3.3.3: 'If an input error is automatically detected and suggestions for correction are known, then the suggestions are provided to the user.'"
+        recommendation: "When validation fails, suggest the correct format (e.g., 'Dates should be in MM/DD/YYYY format') rather than just flagging the error."
+
+      - id: wcag_error_prevention
+        severity: critical
+        condition: "legal/financial form has no review step"
+        title: "Error prevention for legal/financial submissions (WCAG 3.3.4)"
+        evidence: "WCAG 3.3.4: 'For pages that cause legal commitments or financial transactions, submissions must be reversible, verified, or confirmed.'"
+        recommendation: "Add a review/summary step before final submission. Allow users to review and edit all entered data before committing."
+
+  - trigger:
+      pattern_types: [button, destructive-action]
+    findings:
+      - id: wcag_focus_visible
+        severity: warning
+        condition: "interactive elements have no visible focus indicator"
+        title: "Interactive elements need visible focus indicators (WCAG 2.4.7)"
+        evidence: "WCAG 2.4.7: 'Any keyboard operable user interface has a mode of operation where the keyboard focus indicator is visible.' This is essential for keyboard navigation."
+        recommendation: "Ensure all buttons, links, and form fields have a visible focus ring (outline) when focused via keyboard."

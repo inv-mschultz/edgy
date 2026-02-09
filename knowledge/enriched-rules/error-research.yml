@@ -1,0 +1,41 @@
+# Distilled from NNG error message guidelines & hostile patterns research
+# Sources: nngroup.com/articles/error-message-guidelines/
+#          nngroup.com/articles/hostile-error-messages/
+source: "Nielsen Norman Group"
+topic: "Error States & Form Validation"
+
+rules:
+  - trigger:
+      pattern_types: [form, form-field]
+      screen_contains: [form-field]
+    findings:
+      - id: nng_inline_not_summary
+        severity: warning
+        condition: "form shows only summary errors, not inline per-field errors"
+        title: "Form uses summary-only error display"
+        evidence: "NNG: 'Inline validation is significantly more effective than summary-only error messages. Users should see errors at the point of action, not in a separate location.'"
+        recommendation: "Show error messages directly below each invalid field, not just in a summary at the top."
+
+      - id: nng_constructive_errors
+        severity: warning
+        condition: "error messages are vague (e.g., 'Invalid input')"
+        title: "Error messages should be constructive, not vague"
+        evidence: "NNG: 'Error messages should (1) tell users what went wrong, (2) explain how to fix it, and (3) be written in plain language — not system jargon.'"
+        recommendation: "Replace vague errors like 'Invalid input' with specific guidance like 'Email must include @ and a domain (e.g., name@example.com).'"
+
+      - id: nng_hostile_patterns
+        severity: info
+        condition: "error state uses aggressive or blaming language"
+        title: "Error messages should not blame the user"
+        evidence: "NNG's 'Hostile Patterns' research: 'Never blame the user. Say \"The password must be at least 8 characters\" — not \"You entered an invalid password.\"'"
+        recommendation: "Use neutral, instructive language. Focus on what's needed, not what the user did wrong."
+
+  - trigger:
+      pattern_types: [form]
+    findings:
+      - id: nng_prevent_not_catch
+        severity: info
+        condition: "form has no constraints to prevent errors"
+        title: "Prefer prevention over detection"
+        evidence: "NNG Heuristic #5 (Error Prevention): 'Good designs prevent problems from occurring in the first place. Use constraints, defaults, and formatting to eliminate error-prone conditions.'"
+        recommendation: "Use input constraints (max length, type='email', date pickers) to prevent errors rather than just catching them on submit."
