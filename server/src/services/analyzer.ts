@@ -216,8 +216,11 @@ function detectPatterns(node: ExtractedNode): DetectedPattern[] {
   function walk(n: ExtractedNode, depth: number = 0) {
     if (!n.visible) return;
 
+    // Skip generic Figma auto-named nodes — classifications on these are unreliable
+    const isGenericName = /^(Rectangle|Frame|Group|Ellipse|Line|Vector|Polygon|Star)\s*\d*$/i.test(n.name);
+
     // PRIORITY: Use client-side classification if available (more accurate)
-    if (n.classification && n.classification.confidence >= 0.7) {
+    if (!isGenericName && n.classification && n.classification.confidence >= 0.7) {
       const mappedType = CLASSIFICATION_TO_PATTERN[n.classification.elementType];
       if (mappedType) {
         // Check for destructive variant on buttons
