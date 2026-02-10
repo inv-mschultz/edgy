@@ -8,7 +8,9 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-import { handle } from "@hono/node-server/vercel";
+// Note: We do NOT use @hono/node-server/vercel handle() because it
+// fails to pass the request body on Vercel (body stream already consumed).
+// Instead, api/index.js manually constructs a Request and calls app.fetch().
 
 import { analyzeRoutes } from "./routes/analyze";
 import { authMiddleware } from "./middleware/auth";
@@ -66,8 +68,6 @@ app.notFound((c) => {
   );
 });
 
-// Export for Vercel
-export default handle(app);
-
-// Also export the app for local development
+// Export the app for both Vercel (via api/index.js) and local development
 export { app };
+export default app;

@@ -62,43 +62,13 @@ export interface AnalyzeCallbacks {
   onError?: (event: SSEErrorEvent) => void;
 }
 
-// --- API Key Storage ---
-
-let apiKey: string | null = null;
-
-/**
- * Set the Edgy API key for all requests
- */
-export function setEdgyApiKey(key: string): void {
-  apiKey = key;
-}
-
-/**
- * Get the current Edgy API key
- */
-export function getEdgyApiKey(): string | null {
-  return apiKey;
-}
-
-/**
- * Clear the Edgy API key
- */
-export function clearEdgyApiKey(): void {
-  apiKey = null;
-}
-
 // --- Helper Functions ---
 
 function getHeaders(): HeadersInit {
-  const headers: HeadersInit = {
+  return {
     "Content-Type": "application/json",
+    "X-API-Key": "edgy-plugin",
   };
-
-  if (apiKey) {
-    headers["X-API-Key"] = apiKey;
-  }
-
-  return headers;
 }
 
 // --- Main API Functions ---
@@ -119,14 +89,6 @@ export async function analyze(
   options: AnalyzeOptions,
   callbacks: AnalyzeCallbacks
 ): Promise<void> {
-  if (!apiKey) {
-    callbacks.onError?.({
-      code: "NO_API_KEY",
-      message: "Edgy API key not configured",
-    });
-    return;
-  }
-
   const body = {
     file_name: input.fileName,
     screens: input.screens,

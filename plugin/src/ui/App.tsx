@@ -20,14 +20,12 @@ import type {
   PrototypeFile,
   PrototypeExportRequest,
 } from "./lib/types";
-import { getApiKey, getProvider, getAIScreenGeneration, getVercelToken, getEdgyApiKey } from "./lib/api-key-store";
+import { getApiKey, getProvider } from "./lib/api-key-store";
 import { generateScreensBatch, analyzeExistingScreens, type GeneratedScreenLayout, type ScreenGenerationRequest } from "./lib/llm-screen-generator";
 import { getComponentLibrary, type ComponentLibraryData } from "./lib/component-library-client";
-import { deployToVercel, type DeployResult } from "./lib/vercel-deploy";
 import type { DesignTokens } from "./lib/llm-screen-generator";
 import {
   analyze as analyzeWithServer,
-  setEdgyApiKey,
   type SSEProgressEvent,
   type SSECompleteEvent,
   type SSEErrorEvent,
@@ -48,9 +46,9 @@ function getDesignTokens(screenIds: string[]): Promise<DesignTokens> {
   });
 }
 import { useCustomScrollbar } from "./hooks/useCustomScrollbar";
-import { Settings, Info as InfoIcon, X, ExternalLink, Copy, Check } from "lucide-react";
+import { Settings, Info as InfoIcon, X } from "lucide-react";
 
-type Page = "select" | "analyzing" | "results" | "exporting" | "exporting-prototype" | "deploying-vercel" | "settings" | "info";
+type Page = "select" | "analyzing" | "results" | "exporting" | "exporting-prototype" | "settings" | "info";
 
 export function App() {
   const [page, setPage] = useState<Page>("select");
@@ -81,15 +79,6 @@ export function App() {
   const [prototypeExportStatus, setPrototypeExportStatus] = useState<string>("");
   const [prototypeExportComplete, setPrototypeExportComplete] = useState(false);
 
-  // Vercel deployment state
-  const [vercelToken, setVercelToken] = useState<string | null>(null);
-  const [deployStatus, setDeployStatus] = useState<string>("");
-  const [deployProgress, setDeployProgress] = useState<number>(0);
-  const [deployResult, setDeployResult] = useState<DeployResult | null>(null);
-  const [urlCopied, setUrlCopied] = useState(false);
-
-  // Server API key state
-  const [edgyApiKey, setEdgyApiKeyState] = useState<string | null>(null);
 
   // Custom scrollbar - pass page as dependency to recalculate on navigation
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -120,23 +109,6 @@ export function App() {
     document.addEventListener("mouseup", handleMouseUp);
   }, []);
 
-  // Load tokens and settings on mount
-  useEffect(() => {
-    getVercelToken().then(setVercelToken);
-    getEdgyApiKey().then((key) => {
-      setEdgyApiKeyState(key);
-      if (key) {
-        setEdgyApiKey(key);
-      }
-    });
-  }, []);
-
-  // Reload Vercel token when returning from settings
-  useEffect(() => {
-    if (page === "results") {
-      getVercelToken().then(setVercelToken);
-    }
-  }, [page]);
 
   // Listen for messages from plugin sandbox
   useEffect(() => {
@@ -203,136 +175,115 @@ export function App() {
       // Mark extraction complete
       updateStep("extract", "complete");
 
-      // Get server key and LLM credentials
-      const [serverKey, provider, llmApiKey] = await Promise.all([
-        getEdgyApiKey(),
+      // Get LLM credentials
+      const [provider, llmApiKey] = await Promise.all([
         getProvider(),
         getApiKey(), // Claude/Gemini API key
       ]);
 
-      // Server analysis requires an Edgy API key
-      if (serverKey) {
-        console.log("[edgy] Using server-side analysis");
-        updateStep("patterns", "in-progress");
-        setStatusMessage("Connecting to Edgy server...");
+      console.log("[edgy] Using server-side analysis");
+      updateStep("patterns", "in-progress");
+      setStatusMessage("Connecting to Edgy server...");
 
-        // Get design tokens and component library for server
-        const screenIds = data.screens.map((s) => s.screen_id);
-        let designTokens: DesignTokens | undefined;
-        let componentLibrary: ComponentLibraryData | undefined;
+      // Get design tokens and component library for server
+      const screenIds = data.screens.map((s) => s.screen_id);
+      let designTokens: DesignTokens | undefined;
+      let componentLibrary: ComponentLibraryData | undefined;
 
-        try {
-          designTokens = await getDesignTokens(screenIds);
-        } catch (e) {
-          console.warn("[edgy] Failed to get design tokens:", e);
-        }
-
-        try {
-          componentLibrary = await getComponentLibrary();
-        } catch (e) {
-          console.warn("[edgy] Failed to get component library:", e);
-        }
-
-        // Set the API key for the server client
-        setEdgyApiKey(serverKey);
-
-        // Analyze with server
-        await analyzeWithServer(
-          {
-            fileName: data.file_name,
-            screens: data.screens,
-            designTokens,
-            componentLibrary: componentLibrary ? {
-              serialized: componentLibrary.serialized,
-              components: componentLibrary.components,
-            } : undefined,
-          },
-          {
-            llmProvider: provider,
-            llmApiKey: llmApiKey || undefined,
-            // Don't generate screens during analysis — handle during export for faster results
-            generateMissingScreens: false,
-          },
-          {
-            onProgress: (event: SSEProgressEvent) => {
-              setStatusMessage(event.message);
-              // Map server stages to UI steps
-              switch (event.stage) {
-                case "patterns":
-                  updateStep("patterns", "in-progress");
-                  break;
-                case "rules":
-                  updateStep("patterns", "complete");
-                  updateStep("states", "in-progress");
-                  break;
-                case "expectations":
-                  updateStep("states", "complete");
-                  updateStep("inputs", "in-progress");
-                  break;
-                case "findings":
-                  updateStep("inputs", "complete");
-                  updateStep("recommendations", "in-progress");
-                  break;
-                case "llm_review":
-                  updateStep("recommendations", "complete");
-                  // Only add the AI review step if it doesn't exist yet
-                  setAnalysisSteps((prev) => {
-                    if (prev.some(s => s.id === "ai-review")) {
-                      return prev; // Step already exists
-                    }
-                    return [
-                      ...prev,
-                      { id: "ai-review", label: `Reviewing with ${provider === "gemini" ? "Gemini" : "Claude"}`, status: "in-progress" as const },
-                    ];
-                  });
-                  break;
-                case "generating":
-                  updateStep("ai-review", "complete");
-                  // Add a visible step for screen generation
-                  setAnalysisSteps((prev) => {
-                    if (prev.some(s => s.id === "generating")) return prev;
-                    return [
-                      ...prev,
-                      { id: "generating", label: "Generating missing screens", status: "in-progress" as const },
-                    ];
-                  });
-                  break;
-                case "generation_complete":
-                  updateStep("generating", "complete");
-                  break;
-              }
-            },
-            onComplete: async (event: SSECompleteEvent) => {
-              console.log("[edgy] Server analysis complete");
-              // Mark any remaining steps as complete
-              updateStep("ai-review", "complete");
-              updateStep("generating", "complete");
-              updateStep("recommendations", "complete");
-
-              // Set data and navigate immediately
-              setResults(event.analysis);
-              if (event.generated_layouts) {
-                setExportedLayouts(event.generated_layouts);
-              }
-
-              // Ensure Results chunk is loaded before navigating
-              await resultsImport();
-              setPage("results");
-            },
-            onError: (event: SSEErrorEvent) => {
-              console.error("[edgy] Server analysis error:", event);
-              setError(`Server error: ${event.message}. Make sure the Edgy server is running.`);
-              setPage("select");
-            },
-          }
-        );
-
-        return;
+      try {
+        designTokens = await getDesignTokens(screenIds);
+      } catch (e) {
+        console.warn("[edgy] Failed to get design tokens:", e);
       }
 
-      // No server key configured - show error
-      setError("Please configure your Edgy API key in Settings to run analysis.");
-      setPage("select");
+      try {
+        componentLibrary = await getComponentLibrary();
+      } catch (e) {
+        console.warn("[edgy] Failed to get component library:", e);
+      }
+
+      // Analyze with server
+      await analyzeWithServer(
+        {
+          fileName: data.file_name,
+          screens: data.screens,
+          designTokens,
+          componentLibrary: componentLibrary ? {
+            serialized: componentLibrary.serialized,
+            components: componentLibrary.components,
+          } : undefined,
+        },
+        {
+          llmProvider: provider,
+          llmApiKey: llmApiKey || undefined,
+          generateMissingScreens: false,
+        },
+        {
+          onProgress: (event: SSEProgressEvent) => {
+            setStatusMessage(event.message);
+            // Map server stages to UI steps
+            switch (event.stage) {
+              case "patterns":
+                updateStep("patterns", "in-progress");
+                break;
+              case "rules":
+                updateStep("patterns", "complete");
+                updateStep("states", "in-progress");
+                break;
+              case "expectations":
+                updateStep("states", "complete");
+                updateStep("inputs", "in-progress");
+                break;
+              case "findings":
+                updateStep("inputs", "complete");
+                updateStep("recommendations", "in-progress");
+                break;
+              case "llm_review":
+                updateStep("recommendations", "complete");
+                setAnalysisSteps((prev) => {
+                  if (prev.some(s => s.id === "ai-review")) return prev;
+                  return [
+                    ...prev,
+                    { id: "ai-review", label: `Reviewing with ${provider === "gemini" ? "Gemini" : "Claude"}`, status: "in-progress" as const },
+                  ];
+                });
+                break;
+              case "generating":
+                updateStep("ai-review", "complete");
+                setAnalysisSteps((prev) => {
+                  if (prev.some(s => s.id === "generating")) return prev;
+                  return [
+                    ...prev,
+                    { id: "generating", label: "Generating missing screens", status: "in-progress" as const },
+                  ];
+                });
+                break;
+              case "generation_complete":
+                updateStep("generating", "complete");
+                break;
+            }
+          },
+          onComplete: async (event: SSECompleteEvent) => {
+            console.log("[edgy] Server analysis complete");
+            updateStep("ai-review", "complete");
+            updateStep("generating", "complete");
+            updateStep("recommendations", "complete");
+
+            setResults(event.analysis);
+            if (event.generated_layouts) {
+              setExportedLayouts(event.generated_layouts);
+            }
+
+            await resultsImport();
+            setPage("results");
+          },
+          onError: (event: SSEErrorEvent) => {
+            console.error("[edgy] Server analysis error:", event);
+            setError(`Server error: ${event.message}`);
+            setPage("select");
+          },
+        }
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Analysis failed");
       setPage("select");
@@ -371,15 +322,13 @@ export function App() {
     setCurrentScreenIndex(undefined);
     setTotalScreensToGenerate(undefined);
 
-    // Check if we should use AI for screen generation
     const missingScreens = results.missing_screen_findings || [];
-    const [apiKey, provider, useAIGeneration] = await Promise.all([
+    const [apiKey, provider] = await Promise.all([
       getApiKey(),
       getProvider(),
-      getAIScreenGeneration(),
     ]);
 
-    const willGenerateWithAI = includePlaceholders && missingScreens.length > 0 && apiKey && useAIGeneration && extractionData;
+    const willGenerateWithAI = includePlaceholders && missingScreens.length > 0 && apiKey && extractionData;
     setIsAIExport(!!willGenerateWithAI);
 
     // Build initial steps
@@ -633,111 +582,6 @@ export function App() {
     URL.revokeObjectURL(bundleUrl);
   }
 
-  async function handleDeployToVercel(_includeGenerated: boolean = true) {
-    if (!results || !extractionData || !vercelToken) return;
-
-    // Creative build steps
-    const buildSteps = [
-      "Packaging assets...",
-      "Optimizing images...",
-      "Bundling components...",
-      "Minifying code...",
-      "Configuring routes...",
-      "Uploading to Vercel...",
-      "Provisioning CDN...",
-      "Finalizing deployment...",
-    ];
-
-    // Reset deployment state
-    setDeployResult(null);
-    setDeployProgress(0);
-    setDeployStatus(buildSteps[0]);
-    setPage("deploying-vercel");
-
-    // Start progress animation
-    let stepIndex = 0;
-    const progressInterval = setInterval(() => {
-      stepIndex = (stepIndex + 1) % buildSteps.length;
-      setDeployStatus(buildSteps[stepIndex]);
-      setDeployProgress((prev) => Math.min(prev + 8, 90));
-    }, 1200);
-
-    try {
-      const missingScreens = results.missing_screen_findings || [];
-
-      // Reuse layouts from the export step - no need to regenerate
-      const request: PrototypeExportRequest = {
-        existingScreens: extractionData.screens,
-        generatedLayouts: exportedLayouts,
-        missingFindings: exportIncludedPlaceholders ? missingScreens : [],
-        designTokens: {
-          primaryColor: { r: 0.09, g: 0.09, b: 0.09 },
-          backgroundColor: { r: 1, g: 1, b: 1 },
-          textColor: { r: 0.09, g: 0.09, b: 0.09 },
-          mutedColor: { r: 0.45, g: 0.45, b: 0.45 },
-          borderColor: { r: 0.9, g: 0.9, b: 0.9 },
-          borderRadius: 8,
-          fontFamily: "Inter",
-          baseFontSize: 14,
-          headingFontSize: 24,
-        },
-        options: {
-          includeNavigation: true,
-          imageBasedFallback: true,
-          projectName: extractionData.file_name || "prototype",
-          exportMode: "nextjs", // Use Next.js + shadcn for high-quality output
-        },
-      };
-
-      // Wait for prototype files from plugin
-      const files = await new Promise<PrototypeFile[]>((resolve, reject) => {
-        const handler = (event: MessageEvent) => {
-          const msg = event.data.pluginMessage as PluginMessage;
-          if (msg?.type === "prototype-ready") {
-            window.removeEventListener("message", handler);
-            resolve(msg.files);
-          } else if (msg?.type === "error") {
-            window.removeEventListener("message", handler);
-            reject(new Error(msg.message));
-          }
-        };
-        window.addEventListener("message", handler);
-        postToPlugin({ type: "export-prototype", request });
-      });
-
-      // Deploy to Vercel
-      const result = await deployToVercel(
-        files,
-        vercelToken,
-        extractionData.file_name || "prototype",
-        (message) => {
-          setDeployStatus(message);
-          setDeployProgress((prev) => Math.min(prev + 5, 95));
-        }
-      );
-
-      clearInterval(progressInterval);
-      setDeployProgress(100);
-      setDeployResult(result);
-
-    } catch (err) {
-      clearInterval(progressInterval);
-      console.error("[edgy] Vercel deployment failed:", err);
-      setDeployResult({
-        success: false,
-        error: err instanceof Error ? err.message : "Deployment failed",
-      });
-    }
-  }
-
-  function handleCopyUrl() {
-    if (deployResult?.url) {
-      navigator.clipboard.writeText(deployResult.url);
-      setUrlCopied(true);
-      setTimeout(() => setUrlCopied(false), 2000);
-    }
-  }
-
   function handleOpenSettings() {
     setPreviousPage(page);
     setPage("settings");
@@ -895,126 +739,6 @@ export function App() {
                         setPage("results");
                         setPrototypeExportComplete(false);
                         setPrototypeFiles([]);
-                      }}
-                      className="w-full py-3 px-6 rounded-full text-sm font-semibold transition-all"
-                      style={{ backgroundColor: '#FFF8E7', color: '#4A1A6B' }}
-                    >
-                      Back to Results
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-          {page === "deploying-vercel" && (
-            <div className="flex flex-col h-full min-h-[400px]">
-              {!deployResult ? (
-                <>
-                  {/* Centered content */}
-                  <div className="flex-1 flex flex-col items-center justify-center px-6">
-                    <h3 className="text-lg font-semibold mb-6" style={{ color: '#4A1A6B' }}>
-                      Deploying to Vercel...
-                    </h3>
-                    {/* Growing progress bar with gradient */}
-                    <div className="w-full max-w-xs h-2 bg-gray-200 rounded-full overflow-hidden mb-4">
-                      <div
-                        className="h-full rounded-full transition-all duration-500 ease-out"
-                        style={{
-                          width: `${deployProgress}%`,
-                          background: 'linear-gradient(90deg, #4A1A6B 0%, #6B2D8A 50%, #8B45AA 100%)'
-                        }}
-                      />
-                    </div>
-                    <p className="text-sm text-center" style={{ color: '#6B7280' }}>
-                      {deployStatus}
-                    </p>
-                  </div>
-                </>
-              ) : deployResult.success ? (
-                <>
-                  {/* Centered content */}
-                  <div className="flex-1 flex flex-col items-center justify-center px-6">
-                    <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mb-4">
-                      <svg className="w-7 h-7 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-semibold mb-2" style={{ color: '#4A1A6B' }}>
-                      Deployed!
-                    </h3>
-                    <p className="text-sm text-center mb-4" style={{ color: '#6B7280' }}>
-                      Your prototype is live
-                    </p>
-                    <div className="w-full max-w-xs bg-gray-100 rounded-lg p-3">
-                      <div className="flex items-center gap-2">
-                        <code className="flex-1 text-xs break-all" style={{ color: '#4A1A6B' }}>
-                          {deployResult.url}
-                        </code>
-                        <button
-                          onClick={handleCopyUrl}
-                          className="p-1.5 rounded hover:bg-white transition-colors"
-                          title="Copy URL"
-                        >
-                          {urlCopied ? (
-                            <Check className="w-4 h-4 text-green-600" />
-                          ) : (
-                            <Copy className="w-4 h-4" style={{ color: '#6B7280' }} />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  {/* Buttons at bottom */}
-                  <div className="flex flex-col gap-2 p-4">
-                    <a
-                      href={deployResult.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full py-3 px-6 rounded-full text-sm font-semibold transition-all flex items-center justify-center gap-2"
-                      style={{ backgroundColor: '#4A1A6B', color: 'white' }}
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      Open Prototype
-                    </a>
-                    <button
-                      onClick={() => {
-                        setPage("results");
-                        setDeployResult(null);
-                      }}
-                      className="w-full py-3 px-6 rounded-full text-sm font-semibold transition-all"
-                      style={{ backgroundColor: '#FFF8E7', color: '#4A1A6B' }}
-                    >
-                      Back to Results
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  {/* Centered content */}
-                  <div className="flex-1 flex flex-col items-center justify-center px-6">
-                    <div className="w-14 h-14 rounded-full flex items-center justify-center mb-4" style={{ backgroundColor: '#FEE2E2' }}>
-                      <X className="w-7 h-7" style={{ color: '#DC2626' }} />
-                    </div>
-                    <h3 className="text-lg font-semibold mb-2" style={{ color: '#4A1A6B' }}>
-                      Deployment Failed
-                    </h3>
-                    <p className="text-sm text-center" style={{ color: '#DC2626' }}>
-                      {deployResult.error}
-                    </p>
-                  </div>
-                  {/* Buttons at bottom */}
-                  <div className="flex flex-col gap-2 p-4">
-                    <button
-                      onClick={() => handleDeployToVercel(true)}
-                      className="w-full py-3 px-6 rounded-full text-sm font-semibold transition-all"
-                      style={{ backgroundColor: '#4A1A6B', color: 'white' }}
-                    >
-                      Try Again
-                    </button>
-                    <button
-                      onClick={() => {
-                        setPage("results");
-                        setDeployResult(null);
                       }}
                       className="w-full py-3 px-6 rounded-full text-sm font-semibold transition-all"
                       style={{ backgroundColor: '#FFF8E7', color: '#4A1A6B' }}

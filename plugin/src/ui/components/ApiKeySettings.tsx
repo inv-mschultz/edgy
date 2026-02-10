@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { getApiKey, setApiKey, clearApiKey, getProvider, setProvider, getAIScreenGeneration, setAIScreenGeneration, getVercelToken, setVercelToken, clearVercelToken, getEdgyApiKey, setEdgyApiKey as storeEdgyApiKey, clearEdgyApiKey } from "../lib/api-key-store";
+import { getApiKey, setApiKey, clearApiKey, getProvider, setProvider } from "../lib/api-key-store";
 import type { AIProvider } from "../lib/types";
-import { Key, Trash2, Check, AlertCircle, Eraser, Sparkles, Globe, Server } from "lucide-react";
+import { Key, Trash2, Check, AlertCircle, Eraser } from "lucide-react";
 
 const PROVIDERS: { value: AIProvider; label: string; placeholder: string }[] = [
   { value: "claude", label: "Claude", placeholder: "sk-ant-..." },
@@ -12,32 +12,16 @@ export function ApiKeySettings() {
   const [key, setKey] = useState("");
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [provider, setProviderState] = useState<AIProvider>("claude");
-  const [aiScreenGen, setAiScreenGen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<"idle" | "saved" | "error">("idle");
   const [clearing, setClearing] = useState(false);
   const [clearStatus, setClearStatus] = useState<{ type: "idle" | "success" | "error"; message?: string }>({ type: "idle" });
 
-  // Vercel state
-  const [vercelToken, setVercelTokenState] = useState("");
-  const [savedVercelToken, setSavedVercelToken] = useState<string | null>(null);
-  const [vercelSaving, setVercelSaving] = useState(false);
-  const [vercelStatus, setVercelStatus] = useState<"idle" | "saved" | "error">("idle");
-
-  // Edgy Server state
-  const [edgyApiKey, setEdgyApiKeyState] = useState("");
-  const [savedEdgyApiKey, setSavedEdgyApiKey] = useState<string | null>(null);
-  const [edgySaving, setEdgySaving] = useState(false);
-  const [edgyStatus, setEdgyStatus] = useState<"idle" | "saved" | "error">("idle");
-
   useEffect(() => {
-    Promise.all([getApiKey(), getProvider(), getAIScreenGeneration(), getVercelToken(), getEdgyApiKey()]).then(([k, p, aiGen, vToken, edgyKey]) => {
+    Promise.all([getApiKey(), getProvider()]).then(([k, p]) => {
       setSavedKey(k);
       setProviderState(p);
-      setAiScreenGen(aiGen);
-      setSavedVercelToken(vToken);
-      setSavedEdgyApiKey(edgyKey);
       setLoading(false);
     });
 
@@ -99,68 +83,6 @@ export function ApiKeySettings() {
     if (savedKey) {
       await clearApiKey();
       setSavedKey(null);
-    }
-  }
-
-  async function handleVercelSave() {
-    const trimmed = vercelToken.trim();
-    if (!trimmed) return;
-
-    setVercelSaving(true);
-    try {
-      await setVercelToken(trimmed);
-      setSavedVercelToken(trimmed);
-      setVercelTokenState("");
-      setVercelStatus("saved");
-      setTimeout(() => setVercelStatus("idle"), 2000);
-    } catch {
-      setVercelStatus("error");
-    } finally {
-      setVercelSaving(false);
-    }
-  }
-
-  async function handleVercelRemove() {
-    setVercelSaving(true);
-    try {
-      await clearVercelToken();
-      setSavedVercelToken(null);
-      setVercelStatus("idle");
-    } catch {
-      setVercelStatus("error");
-    } finally {
-      setVercelSaving(false);
-    }
-  }
-
-  async function handleEdgySave() {
-    const trimmed = edgyApiKey.trim();
-    if (!trimmed) return;
-
-    setEdgySaving(true);
-    try {
-      await storeEdgyApiKey(trimmed);
-      setSavedEdgyApiKey(trimmed);
-      setEdgyApiKeyState("");
-      setEdgyStatus("saved");
-      setTimeout(() => setEdgyStatus("idle"), 2000);
-    } catch {
-      setEdgyStatus("error");
-    } finally {
-      setEdgySaving(false);
-    }
-  }
-
-  async function handleEdgyRemove() {
-    setEdgySaving(true);
-    try {
-      await clearEdgyApiKey();
-      setSavedEdgyApiKey(null);
-      setEdgyStatus("idle");
-    } catch {
-      setEdgyStatus("error");
-    } finally {
-      setEdgySaving(false);
     }
   }
 
@@ -255,180 +177,6 @@ export function ApiKeySettings() {
           <div className="flex items-center gap-1 text-xs text-destructive">
             <AlertCircle className="w-3 h-3" />
             Failed to save key. Please try again.
-          </div>
-        )}
-      </div>
-
-      {/* AI Screen Generation Toggle - Currently disabled due to quality issues */}
-      {savedKey && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-amber-600" />
-            <span className="text-sm font-medium">AI Screen Generation</span>
-            <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-medium">
-              Experimental
-            </span>
-          </div>
-
-          <p className="text-xs text-amber-700">
-            This feature is experimental and may produce slow or inconsistent results.
-            Template-based generation is recommended for now.
-          </p>
-
-          <label className="flex items-center justify-between cursor-pointer">
-            <span className="text-xs text-muted-foreground flex-1 pr-4">
-              Use AI to generate placeholder screens
-            </span>
-            <div
-              onClick={async () => {
-                const newValue = !aiScreenGen;
-                setAiScreenGen(newValue);
-                await setAIScreenGeneration(newValue);
-              }}
-              className={`
-                relative w-9 h-5 rounded-full transition-colors shrink-0 cursor-pointer
-                ${aiScreenGen ? 'bg-amber-500' : 'bg-muted'}
-              `}
-            >
-              <div
-                className={`
-                  absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-background shadow-sm transition-transform duration-200
-                  ${aiScreenGen ? 'translate-x-4' : 'translate-x-0'}
-                `}
-              />
-            </div>
-          </label>
-
-          {aiScreenGen && (
-            <p className="text-xs text-amber-600">
-              AI generation enabled. Results may vary in quality and speed.
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Vercel Deployment */}
-      <div className="rounded-lg border p-4 flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <Globe className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Live Prototype Deployment</span>
-        </div>
-
-        <p className="text-xs text-muted-foreground">
-          Deploy prototypes to Vercel for instant live URLs.
-        </p>
-
-        {savedVercelToken ? (
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <code className="flex-1 text-xs bg-secondary px-2 py-1 rounded overflow-hidden text-ellipsis">
-                {maskKey(savedVercelToken)}
-              </code>
-              <button
-                onClick={handleVercelRemove}
-                disabled={vercelSaving}
-                className="flex-shrink-0 flex items-center gap-1 px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50 transition-colors"
-                style={{ borderRadius: 4 }}
-              >
-                <Trash2 className="w-3 h-3" />
-                Remove
-              </button>
-            </div>
-            <div className="flex items-center gap-1 text-xs text-green-600">
-              <Check className="w-3 h-3" />
-              Vercel deployment is enabled
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            <input
-              type="password"
-              value={vercelToken}
-              onChange={(e) => setVercelTokenState(e.target.value)}
-              placeholder="Enter Vercel token..."
-              className="w-full px-3 py-2 text-sm rounded-lg border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50"
-              onKeyDown={(e) => e.key === "Enter" && handleVercelSave()}
-            />
-            <p className="text-xs text-muted-foreground">
-              Get your token from{" "}
-              <a
-                href="https://vercel.com/account/tokens"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary underline"
-              >
-                vercel.com/account/tokens
-              </a>
-            </p>
-          </div>
-        )}
-
-        {vercelStatus === "saved" && (
-          <p className="text-xs text-green-600">Token saved successfully.</p>
-        )}
-        {vercelStatus === "error" && (
-          <div className="flex items-center gap-1 text-xs text-destructive">
-            <AlertCircle className="w-3 h-3" />
-            Failed to save token. Please try again.
-          </div>
-        )}
-      </div>
-
-      {/* Edgy Server */}
-      <div className="rounded-lg border p-4 flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <Server className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Edgy API Key</span>
-        </div>
-
-        <p className="text-xs text-muted-foreground">
-          Required for running analysis. Your designs are analysed on the Edgy server.
-        </p>
-
-        {savedEdgyApiKey ? (
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <code className="flex-1 text-xs bg-secondary px-2 py-1 rounded overflow-hidden text-ellipsis">
-                {maskKey(savedEdgyApiKey)}
-              </code>
-              <button
-                onClick={handleEdgyRemove}
-                disabled={edgySaving}
-                className="flex-shrink-0 flex items-center gap-1 px-2 py-1 text-xs rounded bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50 transition-colors"
-                style={{ borderRadius: 4 }}
-              >
-                <Trash2 className="w-3 h-3" />
-                Remove
-              </button>
-            </div>
-            <div className="flex items-center gap-1 text-xs text-green-600">
-              <Check className="w-3 h-3" />
-              Server connected
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            <input
-              type="password"
-              value={edgyApiKey}
-              onChange={(e) => setEdgyApiKeyState(e.target.value)}
-              placeholder="edgy_..."
-              className="w-full px-3 py-2 text-sm rounded-lg border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50"
-              onKeyDown={(e) => e.key === "Enter" && handleEdgySave()}
-            />
-            <p className="text-xs text-muted-foreground">
-              Enter your Edgy API key to run analysis
-            </p>
-          </div>
-        )}
-
-        {edgyStatus === "saved" && (
-          <p className="text-xs text-green-600">API key saved successfully.</p>
-        )}
-        {edgyStatus === "error" && (
-          <div className="flex items-center gap-1 text-xs text-destructive">
-            <AlertCircle className="w-3 h-3" />
-            Failed to save API key. Please try again.
           </div>
         )}
       </div>
