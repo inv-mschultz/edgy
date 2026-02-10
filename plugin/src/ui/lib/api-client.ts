@@ -89,9 +89,13 @@ export async function analyze(
   options: AnalyzeOptions,
   callbacks: AnalyzeCallbacks
 ): Promise<void> {
+  // Strip thumbnail_base64 from screens to stay under Vercel's 4.5MB body limit.
+  // The server's heuristic analysis only needs node trees, not pixel data.
+  const strippedScreens = input.screens.map(({ thumbnail_base64, ...rest }) => rest);
+
   const body = {
     file_name: input.fileName,
-    screens: input.screens,
+    screens: strippedScreens,
     design_tokens: input.designTokens,
     component_library: input.componentLibrary,
     options: {

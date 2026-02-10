@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "tsx --watch src/dev.ts",
-    "build": "tsc",
+    "build": "cp -r ../knowledge knowledge 2>/dev/null; tsc",
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
