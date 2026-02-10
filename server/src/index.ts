@@ -8,7 +8,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-import { handle } from "hono/vercel";
+import { handle } from "@hono/node-server/vercel";
 
 import { analyzeRoutes } from "./routes/analyze";
 import { authMiddleware } from "./middleware/auth";
@@ -71,12 +71,3 @@ export default handle(app);
 
 // Also export the app for local development
 export { app };
-
-// Local development server
-if (process.env.NODE_ENV !== "production") {
-  const port = parseInt(process.env.PORT || "3000", 10);
-  import("@hono/node-server").then(({ serve }) => {
-    serve({ fetch: app.fetch, port });
-    console.log(`[edgy-server] Running at http://localhost:${port}`);
-  });
-}

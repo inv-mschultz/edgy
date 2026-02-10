@@ -6,11 +6,19 @@
  */
 
 import { readFileSync, readdirSync, existsSync } from "fs";
-import { join, resolve, dirname } from "path";
-import { fileURLToPath } from "url";
+import { join, resolve } from "path";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const ENRICHED_DIR = resolve(__dirname, "../../../knowledge/enriched");
+// Resolve enriched knowledge directory
+// Try multiple paths for compatibility across local dev and Vercel
+const enrichedCandidates = [
+  resolve(__dirname, "../../../knowledge/enriched"),
+  resolve(__dirname, "../../knowledge/enriched"),
+  resolve(process.cwd(), "knowledge/enriched"),
+  resolve(process.cwd(), "../knowledge/enriched"),
+];
+const ENRICHED_DIR = enrichedCandidates.find((p) => {
+  try { return existsSync(p); } catch { return false; }
+}) || enrichedCandidates[0];
 
 interface SourceMetadata {
   url: string;

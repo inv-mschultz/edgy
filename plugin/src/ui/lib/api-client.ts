@@ -16,7 +16,7 @@ import type {
 
 // --- Configuration ---
 
-const API_BASE_URL = "https://edgy-server.vercel.app/api/v1";
+const API_BASE_URL = "https://server-pearl-kappa.vercel.app/api/v1";
 
 // --- Types ---
 

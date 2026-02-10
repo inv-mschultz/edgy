@@ -5,8 +5,7 @@
  */
 
 import { readFileSync, readdirSync } from "fs";
-import { join, resolve, dirname } from "path";
-import { fileURLToPath } from "url";
+import { join, resolve } from "path";
 import { parse as parseYaml } from "yaml";
 import type { FlowType } from "./types";
 
@@ -113,8 +112,16 @@ interface ExpectCondition {
 }
 
 // Resolve knowledge directory path
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const KNOWLEDGE_DIR = resolve(__dirname, "../../../knowledge");
+// Try multiple paths: relative to compiled output (local dev), relative to cwd (Vercel)
+const candidates = [
+  resolve(__dirname, "../../../knowledge"),   // local dev: dist/lib -> knowledge/
+  resolve(__dirname, "../../knowledge"),      // alternate: server/ -> knowledge/
+  resolve(process.cwd(), "knowledge"),        // Vercel: cwd is project root
+  resolve(process.cwd(), "../knowledge"),     // Vercel: cwd might be server/
+];
+const KNOWLEDGE_DIR = candidates.find((p) => {
+  try { return readdirSync(p).length > 0; } catch { return false; }
+}) || candidates[0];
 
 // --- Enriched Research Rules ---
 
